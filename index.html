@@ -7,539 +7,854 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
-    body { background-color: #313338; color: #dbdee1; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-thumb { background: #1a1b1e; border-radius: 3px; }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      background-color: #1e1f22;
+      color: #dbdee1;
+      font-family: 'gg sans', 'Noto Sans JP', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      height: 100dvh;
+    }
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #1a1b1e; border-radius: 9999px; }
   </style>
 </head>
-<body class="h-screen w-screen overflow-hidden flex flex-col select-none">
-
-  <!-- 1. 初期セットアップ画面 -->
-  <div id="setup-screen" class="hidden fixed inset-0 bg-[#1e1f22] z-50 flex items-center justify-center p-4">
-    <div class="bg-[#2b2d31] p-6 rounded-xl max-w-md w-full shadow-2xl border border-[#1e1f22]">
-      <div class="flex items-center gap-3 mb-4">
-        <div class="w-10 h-10 rounded-xl bg-[#5865F2] flex items-center justify-center font-bold text-white text-xl">R</div>
-        <div>
-          <h1 class="text-xl font-bold text-white">Raphael 初期セットアップ</h1>
-          <p class="text-xs text-gray-400">Supabaseの接続情報を入力してください</p>
-        </div>
-      </div>
-      <div class="space-y-4">
-        <div>
-          <label class="block text-xs font-bold uppercase text-gray-300 mb-1">Project URL</label>
-          <input id="setup-url" type="text" placeholder="https://xxxx.supabase.co" class="w-full bg-[#1e1f22] text-white p-3 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#5865F2]" />
-        </div>
-        <div>
-          <label class="block text-xs font-bold uppercase text-gray-300 mb-1">Anon Public Key</label>
-          <input id="setup-key" type="text" placeholder="sb_publishable_... または eyJhb..." class="w-full bg-[#1e1f22] text-white p-3 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#5865F2]" />
-        </div>
-        <button onclick="saveSetup()" class="w-full bg-[#5865F2] hover:bg-[#4752C4] text-white font-bold py-3 rounded-lg transition">保存して次へ</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 2. ログイン / 新規登録画面 -->
-  <div id="auth-screen" class="hidden fixed inset-0 bg-[#1e1f22] z-40 flex items-center justify-center p-4">
-    <div class="bg-[#313338] p-6 rounded-xl max-w-md w-full shadow-2xl">
-      <div class="text-center mb-6">
-        <div class="w-14 h-14 rounded-2xl bg-[#5865F2] mx-auto flex items-center justify-center font-bold text-white text-2xl mb-3 shadow-lg">R</div>
-        <h2 id="auth-title" class="text-2xl font-bold text-white">Raphael へようこそ</h2>
-        <p class="text-sm text-gray-400 mt-1">アカウントにログインしてチャットを始めよう</p>
-      </div>
-      <div class="space-y-4">
-        <div id="username-field" class="hidden">
-          <label class="block text-xs font-bold uppercase text-gray-300 mb-1">ユーザー名（表示名）</label>
-          <input id="auth-username" type="text" placeholder="例: ゆーざー" class="w-full bg-[#1e1f22] text-white p-3 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#5865F2]" />
-        </div>
-        <div>
-          <label class="block text-xs font-bold uppercase text-gray-300 mb-1">メールアドレス</label>
-          <input id="auth-email" type="email" placeholder="mail@example.com" class="w-full bg-[#1e1f22] text-white p-3 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#5865F2]" />
-        </div>
-        <div>
-          <label class="block text-xs font-bold uppercase text-gray-300 mb-1">パスワード（6文字以上）</label>
-          <input id="auth-password" type="password" placeholder="••••••" class="w-full bg-[#1e1f22] text-white p-3 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#5865F2]" />
-        </div>
-        <button id="auth-submit-btn" onclick="handleAuth()" class="w-full bg-[#5865F2] hover:bg-[#4752C4] text-white font-bold py-3 rounded-lg transition">ログイン</button>
-        <div class="flex justify-between items-center text-xs text-gray-400 pt-2">
-          <button onclick="toggleAuthMode()" id="auth-toggle-btn" class="text-[#00a8fc] hover:underline">アカウント登録はこちら</button>
-          <button onclick="resetSetup()" class="text-gray-500 hover:underline">API設定を変更</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 3. メインアプリ画面 -->
-  <div id="main-app" class="hidden flex-1 flex h-full overflow-hidden relative">
-
-    <!-- 左端：サーバーリストバー -->
-    <div class="w-[68px] bg-[#1e1f22] flex flex-col items-center py-3 gap-2 shrink-0 z-20">
-      <button onclick="selectHome()" id="home-btn" class="w-12 h-12 rounded-2xl bg-[#5865F2] text-white flex items-center justify-center font-bold text-xl shadow-md transition-all">R</button>
-      <div class="w-8 h-[2px] bg-[#35363c] rounded-full my-1"></div>
-      <div id="server-list" class="flex-1 w-full flex flex-col items-center gap-2 overflow-y-auto px-2"></div>
-      <button onclick="openModal('server-modal')" class="w-12 h-12 rounded-full bg-[#2b2d31] hover:bg-[#23a559] text-[#23a559] hover:text-white flex items-center justify-center text-2xl font-light transition-all mt-1" title="サーバーを作成または参加">＋</button>
-    </div>
-
-    <!-- 中央左：チャンネル / フレンドメニュー（スマホでは開閉可能） -->
-    <div id="sidebar-panel" class="w-60 bg-[#2b2d31] flex flex-col shrink-0 z-10 transition-all">
-      <!-- ヘッダー -->
-      <div class="h-12 px-4 border-b border-[#1f2023] flex items-center justify-between shadow-sm">
-        <span id="sidebar-title" class="font-bold text-white truncate">フレンド</span>
-        <button id="invite-btn" onclick="copyInviteCode()" class="hidden text-xs bg-[#5865F2] hover:bg-[#4752C4] text-white px-2 py-1 rounded">招待コード</button>
-      </div>
-
-      <!-- リスト領域 -->
-      <div class="flex-1 overflow-y-auto p-2 space-y-1">
-        <!-- ホーム時：フレンド・DM一覧 -->
-        <div id="home-sidebar-content">
-          <button onclick="showFriendsView()" class="w-full flex items-center gap-3 px-3 py-2 rounded-lg bg-[#35373c] text-white font-medium text-sm mb-3">
-            <span>👥</span> <span>フレンド一覧</span>
-          </button>
-          <div class="px-2 text-xs font-bold text-gray-400 uppercase mb-1">ダイレクトメッセージ</div>
-          <div id="dm-list" class="space-y-1"></div>
-        </div>
-
-        <!-- サーバー選択時：チャンネル＆メンバー一覧 -->
-        <div id="server-sidebar-content" class="hidden space-y-4">
-          <div>
-            <div class="px-2 text-xs font-bold text-gray-400 uppercase mb-1">テキストチャンネル</div>
-            <div class="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-[#35373c] text-white font-medium text-sm">
-              <span class="text-gray-400">#</span> <span>一般チャット</span>
-            </div>
-          </div>
-          <div>
-            <div class="px-2 text-xs font-bold text-gray-400 uppercase mb-1">メンバー一覧</div>
-            <div id="member-list" class="space-y-1"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 自分のプロフィールバー（タップでプロフィール編集・確認を開く） -->
-      <div class="h-14 bg-[#232428] px-2 flex items-center justify-between gap-2 border-t border-[#1e1f22]">
-        <div onclick="openProfileModal()" class="flex items-center gap-2 flex-1 min-w-0 p-1 rounded-lg hover:bg-[#35373c] cursor-pointer transition">
-          <div class="relative shrink-0">
-            <div id="my-avatar" class="w-9 h-9 rounded-full bg-[#5865F2] flex items-center justify-center text-white font-bold text-sm overflow-hidden bg-cover bg-center"></div>
-            <span class="absolute bottom-0 right-0 w-3 h-3 bg-[#23a559] border-2 border-[#232428] rounded-full"></span>
-          </div>
-          <div class="min-w-0 flex-1">
-            <div id="my-username" class="text-sm font-bold text-white truncate">読み込み中...</div>
-            <div id="my-tag" class="text-[11px] text-gray-400 truncate">#0000</div>
-          </div>
-        </div>
-        <button onclick="openProfileModal()" class="p-2 text-gray-300 hover:text-white hover:bg-[#35373c] rounded-lg transition" title="プロフィール編集">⚙️</button>
-      </div>
-    </div>
-
-    <!-- 右側：メインコンテンツ（チャット画面 または フレンド管理画面） -->
-    <div class="flex-1 flex flex-col bg-[#313338] min-w-0">
-      <!-- 上部バー -->
-      <div class="h-12 px-4 border-b border-[#1f2023] flex items-center justify-between shrink-0 shadow-sm">
-        <div class="flex items-center gap-2 min-w-0">
-          <button onclick="toggleSidebar()" class="md:hidden text-gray-300 hover:text-white px-2 py-1 rounded bg-[#2b2d31] text-xs font-bold">メニュー</button>
-          <span id="chat-header-title" class="font-bold text-white truncate">フレンド</span>
-        </div>
-        <button onclick="logout()" class="text-xs text-gray-400 hover:text-red-400">ログアウト</button>
-      </div>
-
-      <!-- フレンド管理ビュー -->
-      <div id="friends-view" class="flex-1 overflow-y-auto p-4 space-y-6">
-        <div class="bg-[#2b2d31] p-4 rounded-xl border border-[#1e1f22]">
-          <h3 class="font-bold text-white text-sm mb-1">フレンドを追加</h3>
-          <p class="text-xs text-gray-400 mb-3">相手の「ユーザー名#4桁コード」を入力して申請します（あなたのID: <span id="my-full-id" class="text-white font-mono font-bold"></span>）</p>
-          <div class="flex gap-2">
-            <input id="friend-input" type="text" placeholder="例: ユーザー名#1234" class="flex-1 bg-[#1e1f22] text-white px-3 py-2 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#5865F2]" />
-            <button onclick="sendFriendRequest()" class="bg-[#5865F2] hover:bg-[#4752C4] text-white px-4 py-2 rounded-lg text-sm font-bold shrink-0">申請送信</button>
-          </div>
-        </div>
-
-        <div id="pending-requests-section" class="hidden space-y-2">
-          <h4 class="text-xs font-bold text-gray-400 uppercase">届いているフレンド申請</h4>
-          <div id="pending-list" class="space-y-2"></div>
-        </div>
-
-        <div class="space-y-2">
-          <h4 class="text-xs font-bold text-gray-400 uppercase">すべてのフレンド</h4>
-          <div id="friends-list" class="space-y-2"></div>
-        </div>
-      </div>
-
-      <!-- チャットビュー -->
-      <div id="chat-view" class="hidden flex-1 flex flex-col min-h-0">
-        <div id="messages-container" class="flex-1 overflow-y-auto p-4 space-y-4 select-text"></div>
-        <div class="p-3 bg-[#313338] shrink-0">
-          <form onsubmit="sendMessage(event)" class="flex gap-2 bg-[#383a40] p-2 rounded-xl">
-            <input id="message-input" type="text" placeholder="メッセージを送信" autocomplete="off" class="flex-1 bg-transparent text-white px-2 text-sm outline-none" />
-            <button type="submit" class="bg-[#5865F2] hover:bg-[#4752C4] text-white px-4 py-1.5 rounded-lg text-sm font-bold">送信</button>
-          </form>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- モーダル1：サーバー作成・参加 -->
-  <div id="server-modal" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-    <div class="bg-[#313338] rounded-xl max-w-sm w-full p-6 space-y-5 shadow-2xl">
-      <h3 class="text-xl font-bold text-white text-center">サーバーを作成または参加</h3>
-      <div class="space-y-2">
-        <label class="text-xs font-bold text-gray-300 uppercase">新しくサーバーを作る</label>
-        <input id="new-server-name" type="text" placeholder="サーバー名（例: 2年1組）" class="w-full bg-[#1e1f22] text-white p-3 rounded-lg text-sm outline-none" />
-        <button onclick="createServer()" class="w-full bg-[#5865F2] hover:bg-[#4752C4] text-white font-bold py-2.5 rounded-lg text-sm">サーバーを作成</button>
-      </div>
-      <div class="border-t border-[#3f4147] pt-4 space-y-2">
-        <label class="text-xs font-bold text-gray-300 uppercase">招待コードで参加する</label>
-        <input id="join-invite-code" type="text" placeholder="招待コードを入力" class="w-full bg-[#1e1f22] text-white p-3 rounded-lg text-sm outline-none" />
-        <button onclick="joinServer()" class="w-full bg-[#23a559] hover:bg-[#1a8245] text-white font-bold py-2.5 rounded-lg text-sm">サーバーに参加</button>
-      </div>
-      <button onclick="closeModal('server-modal')" class="w-full text-gray-400 hover:text-white text-sm pt-1">閉じる</button>
-    </div>
-  </div>
-
-  <!-- モーダル2：プロフィール表示＆編集（アイコン画像・アイコン色・名前変更） -->
-  <div id="profile-modal" class="hidden fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4">
-    <div class="bg-[#1e1f22] rounded-2xl max-w-sm w-full overflow-hidden shadow-2xl border border-[#2b2d31]">
-      <!-- バナー -->
-      <div id="profile-banner" class="h-24 bg-gradient-to-r from-[#5865F2] to-[#eb459e] relative">
-        <button onclick="closeModal('profile-modal')" class="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/80">✕</button>
-      </div>
-
-      <div class="px-5 pb-6">
-        <!-- アバタープレビュー＆画像選択ボタン -->
-        <div class="relative -mt-12 mb-3 flex items-end justify-between">
-          <div class="relative group">
-            <div id="edit-avatar-preview" class="w-24 h-24 rounded-full border-4 border-[#1e1f22] bg-[#5865F2] flex items-center justify-center text-white text-3xl font-bold overflow-hidden bg-cover bg-center shadow-lg"></div>
-            <label for="avatar-file-input" class="absolute inset-0 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-bold cursor-pointer transition">
-              画像変更
-            </label>
-            <span class="absolute bottom-1 right-1 w-5 h-5 bg-[#23a559] border-4 border-[#1e1f22] rounded-full"></span>
-          </div>
-          <label for="avatar-file-input" class="bg-[#2b2d31] hover:bg-[#35373c] text-white text-xs font-bold px-3 py-2 rounded-lg cursor-pointer border border-[#3f4147] transition">
-            📷 アイコン画像を選ぶ
-          </label>
-          <input id="avatar-file-input" type="file" accept="image/*" onchange="handleAvatarUpload(event)" class="hidden" />
-        </div>
-
-        <!-- 編集フォーム -->
-        <div class="bg-[#2b2d31] rounded-xl p-4 space-y-4">
-          <div>
-            <label class="block text-xs font-bold text-gray-300 mb-1">ユーザー名（表示名）</label>
-            <input id="edit-username-input" type="text" placeholder="新しい名前を入力" class="w-full bg-[#1e1f22] text-white p-2.5 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#5865F2]" />
-          </div>
-
-          <div>
-            <div class="flex justify-between items-center mb-1.5">
-              <label class="text-xs font-bold text-gray-300">アイコン背景カラー</label>
-              <button type="button" onclick="clearAvatarImage()" class="text-[11px] text-red-400 hover:underline">画像を消して文字アイコンに戻す</button>
-            </div>
-            <div class="flex items-center gap-2">
-              <button type="button" onclick="selectAvatarColor('#5865F2')" class="w-7 h-7 rounded-full bg-[#5865F2] border-2 border-white/30"></button>
-              <button type="button" onclick="selectAvatarColor('#23a559')" class="w-7 h-7 rounded-full bg-[#23a559] border-2 border-white/30"></button>
-              <button type="button" onclick="selectAvatarColor('#f0b232')" class="w-7 h-7 rounded-full bg-[#f0b232] border-2 border-white/30"></button>
-              <button type="button" onclick="selectAvatarColor('#da373c')" class="w-7 h-7 rounded-full bg-[#da373c] border-2 border-white/30"></button>
-              <button type="button" onclick="selectAvatarColor('#eb459e')" class="w-7 h-7 rounded-full bg-[#eb459e] border-2 border-white/30"></button>
-              <input id="edit-color-picker" type="color" onchange="selectAvatarColor(this.value)" class="w-8 h-8 rounded cursor-pointer bg-transparent border-0" />
-            </div>
-          </div>
-
-          <div class="pt-1 text-xs text-gray-400 flex justify-between">
-            <span>フレンドコード</span>
-            <span id="edit-friend-code" class="font-mono text-white font-bold">#0000</span>
-          </div>
-        </div>
-
-        <div class="flex gap-2 mt-4">
-          <button onclick="closeModal('profile-modal')" class="flex-1 bg-[#2b2d31] hover:bg-[#35373c] text-white font-bold py-2.5 rounded-lg text-sm">キャンセル</button>
-          <button id="save-profile-btn" onclick="saveProfile()" class="flex-1 bg-[#5865F2] hover:bg-[#4752C4] text-white font-bold py-2.5 rounded-lg text-sm">変更を保存</button>
-        </div>
-      </div>
-    </div>
-  </div>
+<body>
+  <div id="app" class="h-full w-full flex flex-col"></div>
 
   <script>
-    let sb = null;
+    // ==========================================
+    // 状態管理
+    // ==========================================
+    let supabase = null;
     let currentUser = null;
-    let myProfile = null;
-    let isSignUp = false;
-    let currentRoom = { type: 'friends', id: null, name: 'フレンド', inviteCode: '' };
+    let currentProfile = null;
+    let servers = [];
+    let currentView = { type: 'friends', id: null, name: 'フレンド' }; // type: 'friends' | 'server' | 'dm'
+    let messages = [];
+    let friends = [];
+    let pendingRequests = [];
     let onlineUserIds = new Set();
-    let msgSubscription = null;
-    let editAvatarDataUrl = null;
-    let editAvatarColor = '#5865F2';
+    let serverMembers = [];
+    let mobileDrawerOpen = false; // スマホ用サイドバー開閉状態
+    let activeTab = 'online'; // 'online' | 'all' | 'pending' | 'add'
 
-    // 初期化
-    window.onload = async () => {
-      const url = localStorage.getItem('raphael_sb_url');
-      const key = localStorage.getItem('raphael_sb_key');
-      if (!url || !key) {
-        document.getElementById('setup-screen').classList.remove('hidden');
+    let messageSub = null;
+    let presenceChannel = null;
+
+    // ==========================================
+    // 初期化処理
+    // ==========================================
+    async function init() {
+      const savedUrl = localStorage.getItem('raphael_supabase_url');
+      const savedKey = localStorage.getItem('raphael_supabase_key');
+
+      if (!savedUrl || !savedKey) {
+        renderSetupScreen();
         return;
       }
-      initSupabase(url, key);
-    };
+
+      try {
+        supabase = window.supabase.createClient(savedUrl, savedKey);
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) throw error;
+
+        if (!session) {
+          renderAuthScreen();
+        } else {
+          currentUser = session.user;
+          await loadInitialData();
+        }
+      } catch (e) {
+        console.error(e);
+        renderSetupScreen('接続に失敗しました。URLとキーを確認してください。');
+      }
+    }
+
+    // ==========================================
+    // 1. 初期セットアップ画面（URL & Key）
+    // ==========================================
+    function renderSetupScreen(errorMsg = '') {
+      const app = document.getElementById('app');
+      app.innerHTML = `
+        <div class="h-full w-full flex items-center justify-center p-4 bg-[#1e1f22] overflow-y-auto">
+          <div class="w-full max-w-md bg-[#313338] rounded-xl p-6 shadow-2xl border border-[#3f4147]">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-10 h-10 rounded-xl bg-[#5865f2] flex items-center justify-center font-bold text-white text-xl">R</div>
+              <div>
+                <h1 class="text-xl font-bold text-white">Raphael 初期セットアップ</h1>
+                <p class="text-xs text-[#949ba4]">Supabaseの接続情報を入力してください</p>
+              </div>
+            </div>
+            ${errorMsg ? `<div class="mb-4 p-3 rounded bg-red-500/20 border border-red-500 text-red-200 text-xs">${errorMsg}</div>` : ''}
+            <div class="space-y-4">
+              <div>
+                <label class="block text-xs font-bold uppercase text-[#b5bac1] mb-1.5">Project URL</label>
+                <input id="setup-url" type="text" placeholder="https://xxxx.supabase.co"
+                  class="w-full bg-[#1e1f22] text-white text-sm rounded-lg px-3 py-2.5 border border-[#1e1f22] focus:border-[#5865f2] outline-none" />
+              </div>
+              <div>
+                <label class="block text-xs font-bold uppercase text-[#b5bac1] mb-1.5">Anon Public Key</label>
+                <input id="setup-key" type="text" placeholder="sb_publishable_... または eyJhb..."
+                  class="w-full bg-[#1e1f22] text-white text-sm rounded-lg px-3 py-2.5 border border-[#1e1f22] focus:border-[#5865f2] outline-none" />
+              </div>
+              <button onclick="saveSetup()"
+                class="w-full bg-[#5865f2] hover:bg-[#4752c4] text-white font-semibold py-2.5 rounded-lg transition text-sm">
+                保存して次へ
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
 
     function saveSetup() {
       const url = document.getElementById('setup-url').value.trim();
       const key = document.getElementById('setup-key').value.trim();
-      if (!url || !key) return alert('URLとキーを入力してください');
-      localStorage.setItem('raphael_sb_url', url);
-      localStorage.setItem('raphael_sb_key', key);
-      document.getElementById('setup-screen').classList.add('hidden');
-      initSupabase(url, key);
+      if (!url || !key) {
+        alert('URLとキーの両方を入力してください');
+        return;
+      }
+      localStorage.setItem('raphael_supabase_url', url);
+      localStorage.setItem('raphael_supabase_key', key);
+      init();
     }
 
-    function resetSetup() {
-      localStorage.removeItem('raphael_sb_url');
-      localStorage.removeItem('raphael_sb_key');
-      location.reload();
+    // ==========================================
+    // 2. ログイン・新規登録画面
+    // ==========================================
+    function renderAuthScreen(isRegister = false) {
+      const app = document.getElementById('app');
+      app.innerHTML = `
+        <div class="h-full w-full flex items-center justify-center p-4 bg-[#1e1f22] overflow-y-auto">
+          <div class="w-full max-w-md bg-[#313338] rounded-xl p-6 shadow-2xl border border-[#3f4147]">
+            <div class="text-center mb-6">
+              <div class="w-12 h-12 rounded-2xl bg-[#5865f2] flex items-center justify-center font-bold text-white text-2xl mx-auto mb-3 shadow-lg">R</div>
+              <h1 class="text-2xl font-bold text-white">${isRegister ? 'Raphael アカウント作成' : 'おかえりなさい！'}</h1>
+              <p class="text-xs text-[#949ba4] mt-1">${isRegister ? '新しいプロフィールを作成します' : 'ログインしてチャットを始めましょう'}</p>
+            </div>
+            <div class="space-y-4">
+              ${isRegister ? `
+                <div>
+                  <label class="block text-xs font-bold uppercase text-[#b5bac1] mb-1.5">ユーザー名</label>
+                  <input id="auth-username" type="text" placeholder="表示される名前"
+                    class="w-full bg-[#1e1f22] text-white text-sm rounded-lg px-3 py-2.5 outline-none focus:ring-2 focus:ring-[#5865f2]" />
+                </div>
+              ` : ''}
+              <div>
+                <label class="block text-xs font-bold uppercase text-[#b5bac1] mb-1.5">メールアドレス</label>
+                <input id="auth-email" type="email" placeholder="example@email.com"
+                  class="w-full bg-[#1e1f22] text-white text-sm rounded-lg px-3 py-2.5 outline-none focus:ring-2 focus:ring-[#5865f2]" />
+              </div>
+              <div>
+                <label class="block text-xs font-bold uppercase text-[#b5bac1] mb-1.5">パスワード</label>
+                <input id="auth-password" type="password" placeholder="6文字以上"
+                  class="w-full bg-[#1e1f22] text-white text-sm rounded-lg px-3 py-2.5 outline-none focus:ring-2 focus:ring-[#5865f2]" />
+              </div>
+              <button onclick="${isRegister ? 'handleRegister()' : 'handleLogin()'}"
+                class="w-full bg-[#5865f2] hover:bg-[#4752c4] text-white font-semibold py-2.5 rounded-lg transition text-sm">
+                ${isRegister ? '登録して始める' : 'ログイン'}
+              </button>
+              <div class="text-center pt-2">
+                <button onclick="renderAuthScreen(${!isRegister})" class="text-xs text-[#00a8fc] hover:underline">
+                  ${isRegister ? 'すでにアカウントをお持ちの方はこちら' : 'アカウント登録はこちら'}
+                </button>
+              </div>
+              <div class="text-center border-t border-[#3f4147] pt-3">
+                <button onclick="resetConfig()" class="text-[11px] text-[#949ba4] hover:text-white">
+                  Supabase接続設定をリセット
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
     }
 
-    async function initSupabase(url, key) {
-      try {
-        sb = window.supabase.createClient(url, key);
-        const { data: { session } } = await sb.auth.getSession();
-        if (session) {
-          currentUser = session.user;
-          await startApp();
-        } else {
-          document.getElementById('auth-screen').classList.remove('hidden');
-        }
-      } catch (e) {
-        alert('接続エラー: ' + e.message);
-        resetSetup();
+    function resetConfig() {
+      if (confirm('接続設定をリセットしますか？')) {
+        localStorage.removeItem('raphael_supabase_url');
+        localStorage.removeItem('raphael_supabase_key');
+        renderSetupScreen();
       }
     }
 
-    function toggleAuthMode() {
-      isSignUp = !isSignUp;
-      document.getElementById('auth-title').textContent = isSignUp ? 'アカウントを作成' : 'Raphael へようこそ';
-      document.getElementById('auth-submit-btn').textContent = isSignUp ? '登録する' : 'ログイン';
-      document.getElementById('auth-toggle-btn').textContent = isSignUp ? 'すでにアカウントをお持ちの方' : 'アカウント登録はこちら';
-      document.getElementById('username-field').classList.toggle('hidden', !isSignUp);
-    }
-
-    async function handleAuth() {
+    async function handleLogin() {
       const email = document.getElementById('auth-email').value.trim();
       const password = document.getElementById('auth-password').value;
-      const username = document.getElementById('auth-username').value.trim() || email.split('@')[0];
-
       if (!email || !password) return alert('メールアドレスとパスワードを入力してください');
 
-      if (isSignUp) {
-        const { data, error } = await sb.auth.signUp({
-          email,
-          password,
-          options: { data: { username } }
-        });
-        if (error) return alert('登録エラー: ' + error.message);
-        if (data.user) {
-          const code = String(Math.floor(1000 + Math.random() * 9000));
-          await sb.from('profiles').upsert({
-            id: data.user.id,
-            username: username,
-            friend_code: code,
-            avatar_color: '#5865F2'
-          });
-          currentUser = data.user;
-          document.getElementById('auth-screen').classList.add('hidden');
-          await startApp();
-        }
-      } else {
-        const { data, error } = await sb.auth.signInWithPassword({ email, password });
-        if (error) return alert('ログインエラー: ' + error.message);
-        currentUser = data.user;
-        document.getElementById('auth-screen').classList.add('hidden');
-        await startApp();
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        alert('ログインエラー: ' + error.message);
+        return;
       }
+      currentUser = data.user;
+      await loadInitialData();
     }
 
-    async function logout() {
-      await sb.auth.signOut();
-      location.reload();
+    async function handleRegister() {
+      const username = document.getElementById('auth-username').value.trim();
+      const email = document.getElementById('auth-email').value.trim();
+      const password = document.getElementById('auth-password').value;
+      if (!username || !email || !password) return alert('すべての項目を入力してください');
+
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { username } }
+      });
+      if (error) {
+        alert('登録エラー: ' + error.message);
+        return;
+      }
+      if (!data.session) {
+        alert('確認メールが送信されました。Supabaseの「Confirm email」をオフにするかメールを確認してください。');
+        return;
+      }
+
+      currentUser = data.user;
+      const friendCode = String(Math.floor(1000 + Math.random() * 9000));
+      await supabase.from('profiles').upsert({
+        id: currentUser.id,
+        username: username,
+        friend_code: friendCode,
+        avatar_color: '#5865f2'
+      });
+
+      await loadInitialData();
     }
 
-    async function startApp() {
-      document.getElementById('main-app').classList.remove('hidden');
-      await loadMyProfile();
+    async function handleLogout() {
+      if (presenceChannel) await supabase.removeChannel(presenceChannel);
+      if (messageSub) await supabase.removeChannel(messageSub);
+      await supabase.auth.signOut();
+      currentUser = null;
+      currentProfile = null;
+      renderAuthScreen();
+    }
+
+    // ==========================================
+    // 3. データ読み込み＆リアルタイム監視
+    // ==========================================
+    async function loadInitialData() {
+      // プロフィール取得（なければ自動作成）
+      let { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', currentUser.id)
+        .single();
+
+      if (!profile) {
+        const fallbackName = currentUser.user_metadata?.username || currentUser.email.split('@')[0];
+        const friendCode = String(Math.floor(1000 + Math.random() * 9000));
+        const { data: newProf } = await supabase
+          .from('profiles')
+          .insert({ id: currentUser.id, username: fallbackName, friend_code: friendCode })
+          .select()
+          .single();
+        profile = newProf;
+      }
+      currentProfile = profile;
+
+      await Promise.all([
+        fetchServers(),
+        fetchFriends()
+      ]);
+
       setupPresence();
-      await loadServers();
-      await loadFriends();
+      setupRealtimeMessages();
+      renderMainApp();
     }
 
-    // アバター描画ヘルパー
-    function applyAvatarStyle(el, profile) {
-      if (!el || !profile) return;
-      if (profile.avatar_url) {
-        el.style.backgroundImage = `url(${profile.avatar_url})`;
-        el.style.backgroundColor = 'transparent';
-        el.textContent = '';
-      } else {
-        el.style.backgroundImage = 'none';
-        el.style.backgroundColor = profile.avatar_color || '#5865F2';
-        el.textContent = (profile.username || '?').slice(0, 1).toUpperCase();
-      }
+    async function fetchServers() {
+      const { data: memberships } = await supabase
+        .from('server_members')
+        .select('server_id, servers(*)')
+        .eq('user_id', currentUser.id);
+
+      servers = (memberships || [])
+        .map(m => m.servers)
+        .filter(Boolean);
     }
 
-    async function loadMyProfile() {
-      let { data } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
-      if (!data) {
-        const code = String(Math.floor(1000 + Math.random() * 9000));
-        const uname = currentUser.user_metadata?.username || currentUser.email.split('@')[0];
-        const res = await sb.from('profiles').insert({
-          id: currentUser.id,
-          username: uname,
-          friend_code: code,
-          avatar_color: '#5865F2'
-        }).select().single();
-        data = res.data;
-      }
-      myProfile = data;
-      document.getElementById('my-username').textContent = myProfile.username;
-      document.getElementById('my-tag').textContent = `#${myProfile.friend_code}`;
-      document.getElementById('my-full-id').textContent = `${myProfile.username}#${myProfile.friend_code}`;
-      applyAvatarStyle(document.getElementById('my-avatar'), myProfile);
-    }
+    async function fetchFriends() {
+      const { data: rows } = await supabase
+        .from('friendships')
+        .select(`
+          *,
+          requester:profiles!friendships_requester_id_fkey(*),
+          addressee:profiles!friendships_addressee_id_fkey(*)
+        `)
+        .or(`requester_id.eq.${currentUser.id},addressee_id.eq.${currentUser.id}`);
 
-    // プロフィール編集モーダル操作
-    function openProfileModal() {
-      if (!myProfile) return;
-      document.getElementById('edit-username-input').value = myProfile.username;
-      document.getElementById('edit-friend-code').textContent = `#${myProfile.friend_code}`;
-      editAvatarDataUrl = myProfile.avatar_url || null;
-      editAvatarColor = myProfile.avatar_color || '#5865F2';
-      document.getElementById('edit-color-picker').value = editAvatarColor;
-      updateEditPreview();
-      openModal('profile-modal');
-    }
+      friends = [];
+      pendingRequests = [];
 
-    function updateEditPreview() {
-      const preview = document.getElementById('edit-avatar-preview');
-      const nameVal = document.getElementById('edit-username-input').value.trim() || myProfile.username;
-      applyAvatarStyle(preview, {
-        username: nameVal,
-        avatar_url: editAvatarDataUrl,
-        avatar_color: editAvatarColor
+      (rows || []).forEach(r => {
+        const other = r.requester_id === currentUser.id ? r.addressee : r.requester;
+        if (!other) return;
+        if (r.status === 'accepted') {
+          friends.push({ ...other, friendship_id: r.id });
+        } else if (r.status === 'pending' && r.addressee_id === currentUser.id) {
+          pendingRequests.push({ ...other, friendship_id: r.id });
+        }
       });
     }
 
+    function setupPresence() {
+      if (presenceChannel) supabase.removeChannel(presenceChannel);
+      presenceChannel = supabase.channel('online-users', {
+        config: { presence: { key: currentUser.id } }
+      });
+
+      presenceChannel
+        .on('presence', { event: 'sync' }, () => {
+          const state = presenceChannel.presenceState();
+          onlineUserIds = new Set(Object.keys(state));
+          renderMainApp();
+        })
+        .subscribe(async (status) => {
+          if (status === 'SUBSCRIBED') {
+            await presenceChannel.track({ online_at: new Date().toISOString() });
+          }
+        });
+    }
+
+    function setupRealtimeMessages() {
+      if (messageSub) supabase.removeChannel(messageSub);
+      messageSub = supabase
+        .channel('public:messages')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async (payload) => {
+          const newMsg = payload.new;
+          const isCurrentRoom =
+            (currentView.type === 'server' && newMsg.server_id === currentView.id) ||
+            (currentView.type === 'dm' && newMsg.dm_id === currentView.id);
+
+          if (isCurrentRoom) {
+            const { data: sender } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', newMsg.sender_id)
+              .single();
+            messages.push({ ...newMsg, sender });
+            renderMainApp();
+            scrollToBottom();
+          }
+        })
+        .subscribe();
+    }
+
+    // ==========================================
+    // 4. メイン画面レンダリング（スマホ完全レスポンシブ）
+    // ==========================================
+    function renderAvatar(profile, sizeClass = 'w-10 h-10', textClass = 'text-sm', showStatus = false) {
+      if (!profile) return '';
+      const isOnline = onlineUserIds.has(profile.id) || profile.id === currentUser?.id;
+      const initial = (profile.username || '?').charAt(0).toUpperCase();
+      const bgColor = profile.avatar_color || '#5865f2';
+
+      return `
+        <div class="relative inline-block shrink-0 ${sizeClass}">
+          ${profile.avatar_url
+            ? `<img src="${profile.avatar_url}" class="${sizeClass} rounded-full object-cover bg-[#1e1f22]" />`
+            : `<div class="${sizeClass} rounded-full flex items-center justify-center font-bold text-white ${textClass}" style="background-color: ${bgColor};">${escapeHtml(initial)}</div>`
+          }
+          ${showStatus ? `
+            <span class="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[#232428] ${isOnline ? 'bg-[#23a55a]' : 'bg-[#80848e]'}"></span>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    function renderMainApp() {
+      const app = document.getElementById('app');
+
+      // スマホでドロワーが開いている時の背景オーバーレイ＋左メニュー
+      const sidebarHTML = `
+        <div class="flex h-full shrink-0">
+          <!-- 一番左：サーバー一覧レール -->
+          <div class="w-[68px] bg-[#1e1f22] flex flex-col items-center py-3 gap-2.5 overflow-y-auto shrink-0 border-r border-[#18191c]">
+            <!-- ホーム（フレンド・DM）ボタン -->
+            <button onclick="switchToFriends()"
+              class="w-12 h-12 rounded-[24px] hover:rounded-[16px] transition-all flex items-center justify-center font-bold text-lg shadow
+              ${currentView.type !== 'server' ? 'bg-[#5865f2] text-white rounded-[16px]' : 'bg-[#313338] text-[#dbdee1] hover:bg-[#5865f2] hover:text-white'}"
+              title="フレンド・DM">
+              R
+            </button>
+
+            <div class="w-8 h-[2px] bg-[#35363c] rounded-full"></div>
+
+            <!-- 参加中のサーバー一覧 -->
+            ${servers.map(srv => {
+              const isActive = currentView.type === 'server' && currentView.id === srv.id;
+              return `
+                <button onclick="switchToServer('${srv.id}', '${escapeJs(srv.name)}', '${srv.invite_code}')"
+                  class="w-12 h-12 rounded-[24px] hover:rounded-[16px] transition-all flex items-center justify-center font-bold text-sm px-1 truncate
+                  ${isActive ? 'bg-[#5865f2] text-white rounded-[16px]' : 'bg-[#313338] text-[#dbdee1] hover:bg-[#5865f2] hover:text-white'}"
+                  title="${escapeHtml(srv.name)}">
+                  ${escapeHtml(srv.name.slice(0, 3))}
+                </button>
+              `;
+            }).join('')}
+
+            <!-- サーバー作成・参加ボタン -->
+            <button onclick="openServerModal()"
+              class="w-12 h-12 rounded-[24px] hover:rounded-[16px] bg-[#313338] hover:bg-[#23a55a] text-[#23a55a] hover:text-white transition-all flex items-center justify-center text-2xl font-light"
+              title="サーバーを作成または参加">
+              +
+            </button>
+          </div>
+
+          <!-- 2列目：チャンネル / DM / プロフィールフッター -->
+          <div class="w-[230px] bg-[#2b2d31] flex flex-col justify-between h-full shrink-0">
+            <div class="flex-1 overflow-y-auto">
+              ${currentView.type === 'server' ? `
+                <!-- サーバーヘッダー -->
+                <div class="h-12 px-4 flex items-center justify-between border-b border-[#1f2023] font-bold text-white text-sm shadow-sm">
+                  <span class="truncate">${escapeHtml(currentView.name)}</span>
+                  <button onclick="copyInviteCode('${currentView.inviteCode}')" class="text-xs bg-[#35373c] hover:bg-[#404249] text-[#b5bac1] px-2 py-1 rounded shrink-0 ml-1" title="招待コードをコピー">
+                    招待
+                  </button>
+                </div>
+                <div class="p-2 space-y-1">
+                  <div class="px-2 pt-2 pb-1 text-[11px] font-bold uppercase text-[#949ba4]">テキストチャンネル</div>
+                  <button onclick="closeDrawerOnMobile()" class="w-full flex items-center gap-2 px-2.5 py-2 rounded-md bg-[#404249] text-white text-sm font-medium">
+                    <span class="text-[#80848e] text-lg">#</span>
+                    <span>一般チャット</span>
+                  </button>
+
+                  <div class="px-2 pt-4 pb-1 text-[11px] font-bold uppercase text-[#949ba4]">メンバー (${serverMembers.length})</div>
+                  <div class="space-y-1">
+                    ${serverMembers.map(m => `
+                      <div class="flex items-center gap-2.5 px-2 py-1.5 rounded hover:bg-[#35373c]">
+                        ${renderAvatar(m, 'w-7 h-7', 'text-xs', true)}
+                        <span class="text-sm text-[#dbdee1] truncate">${escapeHtml(m.username)}</span>
+                      </div>
+                    `).join('')}
+                  </div>
+                </div>
+              ` : `
+                <!-- ホーム（フレンド＆DMリスト） -->
+                <div class="h-12 px-4 flex items-center border-b border-[#1f2023] font-bold text-white text-sm shadow-sm">
+                  Raphael
+                </div>
+                <div class="p-2 space-y-1">
+                  <button onclick="switchToFriends()"
+                    class="w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition
+                    ${currentView.type === 'friends' ? 'bg-[#404249] text-white' : 'text-[#949ba4] hover:bg-[#35373c] hover:text-[#dbdee1]'}">
+                    <span>👥</span>
+                    <span>フレンド</span>
+                    ${pendingRequests.length > 0 ? `<span class="ml-auto bg-[#da373c] text-white text-[11px] font-bold px-1.5 py-0.5 rounded-full">${pendingRequests.length}</span>` : ''}
+                  </button>
+
+                  <div class="px-2 pt-4 pb-1 text-[11px] font-bold uppercase text-[#949ba4]">ダイレクトメッセージ</div>
+                  ${friends.length === 0 ? `<p class="px-3 py-2 text-xs text-[#949ba4]">フレンドを追加するとDMできます</p>` : ''}
+                  ${friends.map(f => {
+                    const dmRoomId = getDmRoomId(currentUser.id, f.id);
+                    const isActive = currentView.type === 'dm' && currentView.id === dmRoomId;
+                    return `
+                      <button onclick="switchToDm('${f.id}', '${escapeJs(f.username)}')"
+                        class="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition
+                        ${isActive ? 'bg-[#404249] text-white' : 'text-[#949ba4] hover:bg-[#35373c] hover:text-[#dbdee1]'}">
+                        ${renderAvatar(f, 'w-8 h-8', 'text-xs', true)}
+                        <span class="truncate font-medium">${escapeHtml(f.username)}</span>
+                      </button>
+                    `;
+                  }).join('')}
+                </div>
+              `}
+            </div>
+
+            <!-- 左下：自分のプロフィールバー（タップで名前・アイコン編集！） -->
+            <div class="h-[58px] bg-[#232428] px-2.5 flex items-center justify-between gap-2 border-t border-[#1e1f22]">
+              <button onclick="openProfileModal()" class="flex items-center gap-2 min-w-0 flex-1 p-1 rounded-md hover:bg-[#35373c] text-left transition" title="プロフィールを編集">
+                ${renderAvatar(currentProfile, 'w-8 h-8', 'text-xs', true)}
+                <div class="min-w-0 flex-1">
+                  <div class="text-xs font-bold text-white truncate">${escapeHtml(currentProfile?.username || '')}</div>
+                  <div class="text-[11px] text-[#949ba4] truncate">#${escapeHtml(currentProfile?.friend_code || '0000')}</div>
+                </div>
+              </button>
+              <button onclick="openProfileModal()" class="p-2 text-[#b5bac1] hover:text-white hover:bg-[#35373c] rounded-md shrink-0" title="プロフィール設定">
+                ⚙️
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // メインコンテンツ（右側・スマホでは画面全体）
+      let mainContentHTML = '';
+
+      if (currentView.type === 'friends') {
+        mainContentHTML = `
+          <!-- フレンド画面ヘッダー -->
+          <div class="h-12 px-3 bg-[#313338] border-b border-[#1f2023] flex items-center justify-between gap-2 shrink-0">
+            <div class="flex items-center gap-2 min-w-0">
+              <button onclick="toggleMobileDrawer()" class="md:hidden p-1.5 text-[#b5bac1] hover:text-white rounded bg-[#2b2d31] shrink-0">
+                ☰
+              </button>
+              <span class="font-bold text-white text-sm shrink-0">👥 フレンド</span>
+              <div class="flex items-center gap-1 overflow-x-auto no-scrollbar ml-1">
+                <button onclick="setFriendTab('online')" class="px-2 py-1 rounded text-xs font-medium shrink-0 ${activeTab === 'online' ? 'bg-[#404249] text-white' : 'text-[#b5bac1] hover:bg-[#35373c]'}">オンライン</button>
+                <button onclick="setFriendTab('all')" class="px-2 py-1 rounded text-xs font-medium shrink-0 ${activeTab === 'all' ? 'bg-[#404249] text-white' : 'text-[#b5bac1] hover:bg-[#35373c]'}">すべて</button>
+                <button onclick="setFriendTab('pending')" class="px-2 py-1 rounded text-xs font-medium shrink-0 ${activeTab === 'pending' ? 'bg-[#404249] text-white' : 'text-[#b5bac1] hover:bg-[#35373c]'}">
+                  申請中 ${pendingRequests.length > 0 ? `(${pendingRequests.length})` : ''}
+                </button>
+                <button onclick="setFriendTab('add')" class="px-2 py-1 rounded text-xs font-medium shrink-0 ${activeTab === 'add' ? 'bg-[#248046] text-white' : 'bg-[#248046]/80 text-white'}">追加</button>
+              </div>
+            </div>
+            <button onclick="handleLogout()" class="text-xs text-[#949ba4] hover:text-red-400 shrink-0 px-2 py-1">ログアウト</button>
+          </div>
+
+          <!-- フレンド画面ボディ -->
+          <div class="flex-1 overflow-y-auto p-4 bg-[#313338]">
+            ${activeTab === 'add' ? `
+              <div class="max-w-lg">
+                <h2 class="text-sm font-bold text-white uppercase mb-1">フレンドを追加</h2>
+                <p class="text-xs text-[#b5bac1] mb-3">
+                  相手の「ユーザー名#4桁コード」を入力してください。<br>
+                  あなたのID: <span class="text-white font-bold select-all">${escapeHtml(currentProfile?.username)}#${escapeHtml(currentProfile?.friend_code)}</span>
+                </p>
+                <div class="flex gap-2 bg-[#1e1f22] p-2 rounded-lg border border-[#1e1f22] focus-within:border-[#5865f2]">
+                  <input id="friend-tag-input" type="text" placeholder="例: ユーザー名#1234"
+                    class="flex-1 bg-transparent text-white text-sm outline-none px-2 min-w-0" />
+                  <button onclick="sendFriendRequest()" class="bg-[#5865f2] hover:bg-[#4752c4] text-white text-xs font-semibold px-3 py-2 rounded shrink-0">
+                    申請送信
+                  </button>
+                </div>
+              </div>
+            ` : activeTab === 'pending' ? `
+              <div class="max-w-lg space-y-2">
+                <h2 class="text-xs font-bold text-[#b5bac1] uppercase mb-2">届いているフレンド申請 — ${pendingRequests.length}</h2>
+                ${pendingRequests.length === 0 ? `<p class="text-sm text-[#949ba4] py-8 text-center">保留中のフレンド申請はありません</p>` : ''}
+                ${pendingRequests.map(req => `
+                  <div class="flex items-center justify-between p-3 rounded-lg bg-[#2b2d31] border border-[#3f4147]">
+                    <div class="flex items-center gap-3 min-w-0">
+                      ${renderAvatar(req, 'w-9 h-9', 'text-sm', true)}
+                      <div class="min-w-0">
+                        <div class="text-sm font-bold text-white truncate">${escapeHtml(req.username)}</div>
+                        <div class="text-xs text-[#949ba4]">#${escapeHtml(req.friend_code)}</div>
+                      </div>
+                    </div>
+                    <button onclick="acceptFriend('${req.friendship_id}')" class="bg-[#23a55a] hover:bg-[#1a7f42] text-white text-xs font-bold px-3 py-1.5 rounded shrink-0">
+                      承認
+                    </button>
+                  </div>
+                `).join('')}
+              </div>
+            ` : `
+              <div class="max-w-lg space-y-2">
+                ${(() => {
+                  const list = activeTab === 'online'
+                    ? friends.filter(f => onlineUserIds.has(f.id))
+                    : friends;
+                  return `
+                    <h2 class="text-xs font-bold text-[#b5bac1] uppercase mb-2">
+                      ${activeTab === 'online' ? 'オンライン' : 'すべてのフレンド'} — ${list.length}
+                    </h2>
+                    ${list.length === 0 ? `<p class="text-sm text-[#949ba4] py-8 text-center">表示できるフレンドがいません。「追加」タブからフレンドを増やしましょう！</p>` : ''}
+                    ${list.map(f => `
+                      <div onclick="switchToDm('${f.id}', '${escapeJs(f.username)}')"
+                        class="flex items-center justify-between p-3 rounded-lg hover:bg-[#35373c] border-t border-[#3f4147] cursor-pointer transition">
+                        <div class="flex items-center gap-3 min-w-0">
+                          ${renderAvatar(f, 'w-10 h-10', 'text-sm', true)}
+                          <div class="min-w-0">
+                            <div class="text-sm font-bold text-white truncate">${escapeHtml(f.username)}</div>
+                            <div class="text-xs text-[#949ba4]">${onlineUserIds.has(f.id) ? 'オンライン' : 'オフライン'}</div>
+                          </div>
+                        </div>
+                        <span class="bg-[#2b2d31] text-[#dbdee1] text-xs px-3 py-1.5 rounded-full shrink-0">💬 メッセージ</span>
+                      </div>
+                    `).join('')}
+                  `;
+                })()}
+              </div>
+            `}
+          </div>
+        `;
+      } else {
+        // チャット画面（サーバーチャット または DM）
+        mainContentHTML = `
+          <!-- チャットヘッダー -->
+          <div class="h-12 px-3 bg-[#313338] border-b border-[#1f2023] flex items-center justify-between gap-2 shrink-0">
+            <div class="flex items-center gap-2 min-w-0">
+              <button onclick="toggleMobileDrawer()" class="md:hidden p-1.5 text-[#b5bac1] hover:text-white rounded bg-[#2b2d31] shrink-0">
+                ☰
+              </button>
+              <span class="text-[#80848e] font-bold text-lg shrink-0">${currentView.type === 'server' ? '#' : '@'}</span>
+              <span class="font-bold text-white text-sm truncate">${escapeHtml(currentView.name)}</span>
+            </div>
+            ${currentView.type === 'server' ? `
+              <button onclick="copyInviteCode('${currentView.inviteCode}')" class="text-xs bg-[#2b2d31] hover:bg-[#35373c] text-[#b5bac1] px-2.5 py-1 rounded shrink-0">
+                招待コード: ${escapeHtml(currentView.inviteCode || '')}
+              </button>
+            ` : ''}
+          </div>
+
+          <!-- メッセージ一覧 -->
+          <div id="messages-container" class="flex-1 overflow-y-auto p-4 space-y-4 bg-[#313338]">
+            ${messages.length === 0 ? `
+              <div class="text-center text-xs text-[#949ba4] my-10">
+                まだメッセージがありません。最初の挨拶を送ってみましょう！
+              </div>
+            ` : ''}
+            ${messages.map(msg => {
+              const sender = msg.sender || { username: '不明なユーザー', avatar_color: '#5865f2' };
+              const timeStr = new Date(msg.created_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+              return `
+                <div class="flex items-start gap-3">
+                  ${renderAvatar(sender, 'w-10 h-10', 'text-sm', false)}
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-baseline gap-2">
+                      <span class="font-bold text-white text-sm">${escapeHtml(sender.username)}</span>
+                      <span class="text-[11px] text-[#949ba4]">${timeStr}</span>
+                    </div>
+                    <p class="text-sm text-[#dbdee1] break-words whitespace-pre-wrap mt-0.5">${escapeHtml(msg.content)}</p>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+
+          <!-- メッセージ入力欄 -->
+          <div class="p-3 bg-[#313338] shrink-0">
+            <form onsubmit="handleSendMessage(event)" class="flex items-center gap-2 bg-[#383a40] rounded-lg px-3 py-2">
+              <input id="message-input" type="text" autocomplete="off"
+                placeholder="${escapeHtml(currentView.name)} へメッセージを送信"
+                class="flex-1 bg-transparent text-white text-sm outline-none min-w-0" />
+              <button type="submit" class="bg-[#5865f2] hover:bg-[#4752c4] text-white text-xs font-bold px-3.5 py-1.5 rounded-md shrink-0">
+                送信
+              </button>
+            </form>
+          </div>
+        `;
+      }
+
+      app.innerHTML = `
+        <div class="relative flex h-full w-full overflow-hidden">
+          <!-- PC表示用常設サイドバー -->
+          <div class="hidden md:flex h-full shrink-0">
+            ${sidebarHTML}
+          </div>
+
+          <!-- スマホ表示用スライドドロワー -->
+          ${mobileDrawerOpen ? `
+            <div class="fixed inset-0 z-40 flex md:hidden">
+              <div class="relative z-50 flex h-full shadow-2xl">
+                ${sidebarHTML}
+              </div>
+              <div onclick="toggleMobileDrawer()" class="flex-1 bg-black/60"></div>
+            </div>
+          ` : ''}
+
+          <!-- 右側メイン画面（スマホでは常に横幅100%で崩れない） -->
+          <div class="flex-1 flex flex-col min-w-0 h-full bg-[#313338]">
+            ${mainContentHTML}
+          </div>
+        </div>
+
+        <!-- モーダル用コンテナ -->
+        <div id="modal-root"></div>
+      `;
+    }
+
+    // ==========================================
+    // 5. プロフィール編集モーダル（名前＆アイコン変更）
+    // ==========================================
+    let tempAvatarDataUrl = null;
+    let tempAvatarColor = '#5865f2';
+
+    function openProfileModal() {
+      tempAvatarDataUrl = currentProfile?.avatar_url || null;
+      tempAvatarColor = currentProfile?.avatar_color || '#5865f2';
+      const colors = ['#5865f2', '#23a55a', '#f0b232', '#da373c', '#eb459e', '#00a8fc'];
+
+      const modalRoot = document.getElementById('modal-root');
+      modalRoot.innerHTML = `
+        <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
+          <div class="w-full max-w-sm bg-[#313338] rounded-xl p-5 shadow-2xl border border-[#3f4147] max-h-[90dvh] overflow-y-auto">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-base font-bold text-white">プロフィール編集</h2>
+              <button onclick="closeModal()" class="text-[#949ba4] hover:text-white text-lg">✕</button>
+            </div>
+
+            <!-- プレビュー -->
+            <div class="flex flex-col items-center mb-4">
+              <div id="avatar-preview-box" class="w-20 h-20 rounded-full overflow-hidden flex items-center justify-center text-white text-2xl font-bold shadow-md mb-3"
+                style="background-color: ${tempAvatarColor};">
+                ${tempAvatarDataUrl
+                  ? `<img src="${tempAvatarDataUrl}" class="w-full h-full object-cover" />`
+                  : escapeHtml((currentProfile?.username || '?').charAt(0).toUpperCase())
+                }
+              </div>
+
+              <div class="flex gap-2">
+                <label class="cursor-pointer bg-[#5865f2] hover:bg-[#4752c4] text-white text-xs font-semibold px-3 py-1.5 rounded-md transition">
+                  📷 画像を選ぶ
+                  <input type="file" accept="image/*" onchange="handleAvatarFileChange(event)" class="hidden" />
+                </label>
+                ${tempAvatarDataUrl ? `
+                  <button onclick="removeAvatarImage()" class="bg-[#da373c] hover:bg-[#a12828] text-white text-xs font-semibold px-3 py-1.5 rounded-md">
+                    画像を削除
+                  </button>
+                ` : ''}
+              </div>
+            </div>
+
+            <!-- 背景カラー選択 -->
+            <div class="mb-4">
+              <label class="block text-xs font-bold uppercase text-[#b5bac1] mb-2">アイコン背景カラー</label>
+              <div class="flex items-center gap-2">
+                ${colors.map(c => `
+                  <button type="button" onclick="selectAvatarColor('${c}')"
+                    class="w-7 h-7 rounded-full border-2 ${tempAvatarColor === c ? 'border-white scale-110' : 'border-transparent'}"
+                    style="background-color: ${c};"></button>
+                `).join('')}
+              </div>
+            </div>
+
+            <!-- ユーザー名入力 -->
+            <div class="mb-5">
+              <label class="block text-xs font-bold uppercase text-[#b5bac1] mb-1.5">ユーザー名</label>
+              <input id="edit-username-input" type="text" value="${escapeHtml(currentProfile?.username || '')}"
+                class="w-full bg-[#1e1f22] text-white text-sm rounded-lg px-3 py-2.5 outline-none focus:ring-2 focus:ring-[#5865f2]" />
+            </div>
+
+            <div class="flex gap-2">
+              <button onclick="closeModal()" class="flex-1 bg-[#4e5058] hover:bg-[#6d6f78] text-white text-xs font-semibold py-2.5 rounded-lg">
+                キャンセル
+              </button>
+              <button onclick="saveProfileChanges()" class="flex-1 bg-[#23a55a] hover:bg-[#1a7f42] text-white text-xs font-semibold py-2.5 rounded-lg">
+                保存する
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
     function selectAvatarColor(color) {
-      editAvatarColor = color;
-      updateEditPreview();
+      tempAvatarColor = color;
+      const box = document.getElementById('avatar-preview-box');
+      if (box) box.style.backgroundColor = color;
     }
 
-    function clearAvatarImage() {
-      editAvatarDataUrl = null;
-      updateEditPreview();
+    function removeAvatarImage() {
+      tempAvatarDataUrl = null;
+      const box = document.getElementById('avatar-preview-box');
+      const nameVal = document.getElementById('edit-username-input')?.value || currentProfile?.username || '?';
+      if (box) {
+        box.innerHTML = escapeHtml(nameVal.charAt(0).toUpperCase());
+      }
     }
 
-    // 画像を軽量リサイズしてBase64化
-    function handleAvatarUpload(event) {
+    function handleAvatarFileChange(event) {
       const file = event.target.files[0];
       if (!file) return;
+
       const reader = new FileReader();
-      reader.onload = (e) => {
+      reader.onload = function(e) {
         const img = new Image();
-        img.onload = () => {
+        img.onload = function() {
+          // 128x128に自動リサイズして軽量保存
           const canvas = document.createElement('canvas');
-          const size = 160;
+          const size = 128;
           canvas.width = size;
           canvas.height = size;
           const ctx = canvas.getContext('2d');
+
           const minSide = Math.min(img.width, img.height);
           const sx = (img.width - minSide) / 2;
           const sy = (img.height - minSide) / 2;
           ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, size, size);
-          editAvatarDataUrl = canvas.toDataURL('image/jpeg', 0.8);
-          updateEditPreview();
+
+          tempAvatarDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+          const box = document.getElementById('avatar-preview-box');
+          if (box) {
+            box.innerHTML = `<img src="${tempAvatarDataUrl}" class="w-full h-full object-cover" />`;
+          }
         };
         img.src = e.target.result;
       };
       reader.readAsDataURL(file);
     }
 
-    async function saveProfile() {
+    async function saveProfileChanges() {
       const newName = document.getElementById('edit-username-input').value.trim();
       if (!newName) return alert('ユーザー名を入力してください');
 
-      const btn = document.getElementById('save-profile-btn');
-      btn.textContent = '保存中...';
-      btn.disabled = true;
-
       const updatePayload = {
         username: newName,
-        avatar_color: editAvatarColor,
-        avatar_url: editAvatarDataUrl,
-        updated_at: new Date().toISOString()
+        avatar_color: tempAvatarColor,
+        avatar_url: tempAvatarDataUrl
       };
 
-      const { error } = await sb.from('profiles').update(updatePayload).eq('id', currentUser.id);
-      btn.textContent = '変更を保存';
-      btn.disabled = false;
+      const { error } = await supabase
+        .from('profiles')
+        .update(updatePayload)
+        .eq('id', currentUser.id);
 
       if (error) {
-        if (error.message && error.message.includes('avatar_url')) {
-          // avatar_url列がまだない場合は名前と色だけ保存して案内
-          await sb.from('profiles').update({ username: newName, avatar_color: editAvatarColor }).eq('id', currentUser.id);
-          alert('名前と色は保存しました！画像アイコンも保存するにはSupabaseでSQLを1行実行してください。');
-        } else {
-          return alert('保存エラー: ' + error.message);
-        }
+        alert('保存エラー: ' + error.message + '\n※Supabaseで avatar_url 列を追加していない場合は、SQLを実行してください。');
+        return;
       }
 
-      await loadMyProfile();
-      closeModal('profile-modal');
-      if (currentRoom.type === 'server') {
-        await loadServerMembers(currentRoom.id);
-        await loadMessages();
-      } else if (currentRoom.type === 'dm') {
-        await loadMessages();
-      }
+      currentProfile = { ...currentProfile, ...updatePayload };
+      closeModal();
+      renderMainApp();
     }
 
-    // オンライン状態検知
-    function setupPresence() {
-      const channel = sb.channel('online-users', {
-        config: { presence: { key: currentUser.id } }
-      });
-      channel
-        .on('presence', { event: 'sync' }, () => {
-          const state = channel.presenceState();
-          onlineUserIds = new Set(Object.keys(state));
-          loadFriends();
-          if (currentRoom.type === 'server') loadServerMembers(currentRoom.id);
-        })
-        .subscribe(async (status) => {
-          if (status === 'SUBSCRIBED') {
-            await channel.track({ online_at: new Date().toISOString() });
-          }
-        });
-    }
+    // ==========================================
+    // 6. サーバー作成・参加モーダル
+    // ==========================================
+    function openServerModal() {
+      const modalRoot = document.getElementById('modal-root');
+      modalRoot.innerHTML = `
+        <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
+          <div class="w-full max-w-sm bg-[#313338] rounded-xl p-5 shadow-2xl border border-[#3f4147]">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-base font-bold text-white">サーバーを作成または参加</h2>
+              <button onclick="closeModal()" class="text-[#949ba4] hover:text-white text-lg">✕</button>
+            </div>
 
-    // サーバー一覧読み込み
-    async function loadServers() {
-      const { data: memberships } = await sb
-        .from('server_members')
-        .select('server_id, servers(*)')
-        .eq('user_id', currentUser.id);
+            <div class="space-y-4">
+              <div class="bg-[#2b2d31] p-3.5 rounded-lg">
+                <label class="block text-xs font-bold text-white mb-2">新しくサーバーを作る</label>
+                <div class="flex gap-2">
+                  <input id="new-server-name" type="text" placeholder="サーバー名"
+                    class="flex-1 bg-[#1e1f22] text-white text-sm rounded px-3 py-2 outline-none min-w-0" />
+                  <button onclick="createServer()" class="bg-[#5865f2] hover:bg-[#4752c4] text-white text-xs font-bold px-3.5 py-2 rounded shrink-0">
+                    作成
+                  </button>
+                </div>
+              </div>
 
-      const list = document.getElementById('server-list');
-      list.innerHTML = '';
-      (memberships || []).forEach(m => {
-        if (!m.servers) return;
-        const srv = m.servers;
-        const btn = document.createElement('button');
-        btn.className = 'w-12 h-12 rounded-full hover:rounded-2xl bg-[#313338] hover:bg-[#5865F2] text-white font-bold text-sm flex items-center justify-center transition-all shrink-0 overflow-hidden px-1';
-        btn.textContent = srv.name.slice(0, 3);
-        btn.title = srv.name;
-        btn.onclick = () => selectServer(srv);
-        list.appendChild(btn);
-      });
+              <div class="bg-[#2b2d31] p-3.5 rounded-lg">
+                <label class="block text-xs font-bold text-white mb-2">招待コードで参加する</label>
+                <div class="flex gap-2">
+                  <input id="join-invite-code" type="text" placeholder="例: AB12CD"
+                    class="flex-1 bg-[#1e1f22] text-white text-sm rounded px-3 py-2 outline-none min-w-0" />
+                  <button onclick="joinServer()" class="bg-[#23a55a] hover:bg-[#1a7f42] text-white text-xs font-bold px-3.5 py-2 rounded shrink-0">
+                    参加
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
     }
 
     async function createServer() {
       const name = document.getElementById('new-server-name').value.trim();
       if (!name) return alert('サーバー名を入力してください');
-      const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
 
-      const { data: srv, error } = await sb
+      const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const { data: srv, error } = await supabase
         .from('servers')
         .insert({ name, invite_code: inviteCode, owner_id: currentUser.id })
         .select()
@@ -547,300 +862,205 @@
 
       if (error) return alert('作成エラー: ' + error.message);
 
-      await sb.from('server_members').insert({ server_id: srv.id, user_id: currentUser.id });
-      document.getElementById('new-server-name').value = '';
-      closeModal('server-modal');
-      await loadServers();
-      selectServer(srv);
+      await supabase.from('server_members').insert({
+        server_id: srv.id,
+        user_id: currentUser.id
+      });
+
+      await fetchServers();
+      closeModal();
+      switchToServer(srv.id, srv.name, srv.invite_code);
     }
 
     async function joinServer() {
       const code = document.getElementById('join-invite-code').value.trim().toUpperCase();
       if (!code) return alert('招待コードを入力してください');
 
-      const { data: srv, error } = await sb.from('servers').select('*').eq('invite_code', code).single();
-      if (error || !srv) return alert('招待コードが見つかりません');
-
-      await sb.from('server_members').upsert({ server_id: srv.id, user_id: currentUser.id });
-      document.getElementById('join-invite-code').value = '';
-      closeModal('server-modal');
-      await loadServers();
-      selectServer(srv);
-    }
-
-    function selectHome() {
-      currentRoom = { type: 'friends', id: null, name: 'フレンド', inviteCode: '' };
-      document.getElementById('sidebar-title').textContent = 'フレンド';
-      document.getElementById('invite-btn').classList.add('hidden');
-      document.getElementById('home-sidebar-content').classList.remove('hidden');
-      document.getElementById('server-sidebar-content').classList.add('hidden');
-      showFriendsView();
-    }
-
-    function showFriendsView() {
-      document.getElementById('chat-header-title').textContent = 'フレンド';
-      document.getElementById('friends-view').classList.remove('hidden');
-      document.getElementById('chat-view').classList.add('hidden');
-      loadFriends();
-    }
-
-    async function selectServer(srv) {
-      currentRoom = { type: 'server', id: srv.id, name: srv.name, inviteCode: srv.invite_code };
-      document.getElementById('sidebar-title').textContent = srv.name;
-      document.getElementById('invite-btn').classList.remove('hidden');
-      document.getElementById('home-sidebar-content').classList.add('hidden');
-      document.getElementById('server-sidebar-content').classList.remove('hidden');
-      document.getElementById('friends-view').classList.add('hidden');
-      document.getElementById('chat-view').classList.remove('hidden');
-      document.getElementById('chat-header-title').textContent = `# 一般チャット (${srv.name})`;
-      document.getElementById('message-input').placeholder = `${srv.name} へメッセージを送信`;
-
-      await loadServerMembers(srv.id);
-      await loadMessages();
-      subscribeMessages();
-    }
-
-    function copyInviteCode() {
-      if (!currentRoom.inviteCode) return;
-      navigator.clipboard?.writeText(currentRoom.inviteCode);
-      alert(`招待コードをコピーしました！
-コード: ${currentRoom.inviteCode}`);
-    }
-
-    async function loadServerMembers(serverId) {
-      const { data } = await sb
-        .from('server_members')
-        .select('user_id, profiles(*)')
-        .eq('server_id', serverId);
-
-      const list = document.getElementById('member-list');
-      list.innerHTML = '';
-      (data || []).forEach(m => {
-        const p = m.profiles;
-        if (!p) return;
-        const isOnline = onlineUserIds.has(p.id) || p.id === currentUser.id;
-        const row = document.createElement('div');
-        row.className = 'flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[#35373c]';
-        row.innerHTML = `
-          <div class="relative shrink-0">
-            <div class="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold overflow-hidden bg-cover bg-center" style="${p.avatar_url ? `background-image:url(${p.avatar_url})` : `background-color:${p.avatar_color || '#5865F2'}`}">
-              ${p.avatar_url ? '' : escapeHtml(p.username.slice(0, 1).toUpperCase())}
-            </div>
-            <span class="absolute bottom-0 right-0 w-2.5 h-2.5 ${isOnline ? 'bg-[#23a559]' : 'bg-gray-500'} border-2 border-[#2b2d31] rounded-full"></span>
-          </div>
-          <span class="text-sm text-gray-200 truncate">${escapeHtml(p.username)}</span>
-        `;
-        list.appendChild(row);
-      });
-    }
-
-    // フレンド機能
-    async function sendFriendRequest() {
-      const raw = document.getElementById('friend-input').value.trim();
-      if (!raw.includes('#')) return alert('「ユーザー名#4桁コード」の形式で入力してください');
-      const [uname, code] = raw.split('#');
-
-      const { data: target } = await sb
-        .from('profiles')
+      const { data: srv, error } = await supabase
+        .from('servers')
         .select('*')
-        .eq('username', uname)
-        .eq('friend_code', code)
+        .eq('invite_code', code)
         .single();
 
-      if (!target) return alert('ユーザーが見つかりませんでした');
-      if (target.id === currentUser.id) return alert('自分自身には申請できません');
+      if (error || !srv) return alert('招待コードが見つかりませんでした');
 
-      const { error } = await sb.from('friendships').insert({
-        requester_id: currentUser.id,
-        addressee_id: target.id,
-        status: 'pending'
+      await supabase.from('server_members').upsert({
+        server_id: srv.id,
+        user_id: currentUser.id
       });
 
-      if (error) return alert('すでに申請済みかフレンドです');
-      document.getElementById('friend-input').value = '';
-      alert(`${target.username} にフレンド申請を送りました！`);
-      loadFriends();
+      await fetchServers();
+      closeModal();
+      switchToServer(srv.id, srv.name, srv.invite_code);
     }
 
-    async function loadFriends() {
-      const { data } = await sb
-        .from('friendships')
-        .select('*, requester:profiles!friendships_requester_id_fkey(*), addressee:profiles!friendships_addressee_id_fkey(*)')
-        .or(`requester_id.eq.${currentUser.id},addressee_id.eq.${currentUser.id}`);
-
-      const pendingList = document.getElementById('pending-list');
-      const friendsList = document.getElementById('friends-list');
-      const dmList = document.getElementById('dm-list');
-      pendingList.innerHTML = '';
-      friendsList.innerHTML = '';
-      dmList.innerHTML = '';
-
-      let pendingCount = 0;
-
-      (data || []).forEach(f => {
-        const isRequester = f.requester_id === currentUser.id;
-        const other = isRequester ? f.addressee : f.requester;
-        if (!other) return;
-
-        if (f.status === 'pending' && !isRequester) {
-          pendingCount++;
-          const div = document.createElement('div');
-          div.className = 'flex items-center justify-between bg-[#2b2d31] p-3 rounded-xl';
-          div.innerHTML = `
-            <span class="font-bold text-white text-sm">${escapeHtml(other.username)}#${other.friend_code}</span>
-            <button onclick="acceptFriend('${f.id}')" class="bg-[#23a559] text-white px-3 py-1 rounded-lg text-xs font-bold">承認</button>
-          `;
-          pendingList.appendChild(div);
-        } else if (f.status === 'accepted') {
-          const isOnline = onlineUserIds.has(other.id);
-          const item = document.createElement('div');
-          item.className = 'flex items-center justify-between bg-[#2b2d31] p-3 rounded-xl hover:bg-[#35373c] cursor-pointer';
-          item.onclick = () => openDM(other);
-          item.innerHTML = `
-            <div class="flex items-center gap-3">
-              <div class="relative">
-                <div class="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm overflow-hidden bg-cover bg-center" style="${other.avatar_url ? `background-image:url(${other.avatar_url})` : `background-color:${other.avatar_color || '#5865F2'}`}">
-                  ${other.avatar_url ? '' : escapeHtml(other.username.slice(0, 1).toUpperCase())}
-                </div>
-                <span class="absolute bottom-0 right-0 w-3 h-3 ${isOnline ? 'bg-[#23a559]' : 'bg-gray-500'} border-2 border-[#2b2d31] rounded-full"></span>
-              </div>
-              <div>
-                <div class="font-bold text-white text-sm">${escapeHtml(other.username)}</div>
-                <div class="text-xs text-gray-400">${isOnline ? 'オンライン' : 'オフライン'}</div>
-              </div>
-            </div>
-            <span class="text-xs bg-[#1e1f22] px-3 py-1.5 rounded-lg text-gray-300">DMを送る</span>
-          `;
-          friendsList.appendChild(item);
-
-          const dmBtn = document.createElement('button');
-          dmBtn.className = 'w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[#35373c] text-left';
-          dmBtn.onclick = () => openDM(other);
-          dmBtn.innerHTML = `
-            <div class="relative shrink-0">
-              <div class="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold overflow-hidden bg-cover bg-center" style="${other.avatar_url ? `background-image:url(${other.avatar_url})` : `background-color:${other.avatar_color || '#5865F2'}`}">
-                ${other.avatar_url ? '' : escapeHtml(other.username.slice(0, 1).toUpperCase())}
-              </div>
-              <span class="absolute bottom-0 right-0 w-2.5 h-2.5 ${isOnline ? 'bg-[#23a559]' : 'bg-gray-500'} border-2 border-[#2b2d31] rounded-full"></span>
-            </div>
-            <span class="text-sm text-gray-200 truncate">${escapeHtml(other.username)}</span>
-          `;
-          dmList.appendChild(dmBtn);
-        }
-      });
-
-      document.getElementById('pending-requests-section').classList.toggle('hidden', pendingCount === 0);
+    function closeModal() {
+      const modalRoot = document.getElementById('modal-root');
+      if (modalRoot) modalRoot.innerHTML = '';
     }
 
-    async function acceptFriend(friendshipId) {
-      await sb.from('friendships').update({ status: 'accepted' }).eq('id', friendshipId);
-      loadFriends();
+    // ==========================================
+    // 7. 画面切り替え・メッセージ送信・フレンド操作
+    // ==========================================
+    function toggleMobileDrawer() {
+      mobileDrawerOpen = !mobileDrawerOpen;
+      renderMainApp();
     }
 
-    async function openDM(friendProfile) {
-      const dmRoomId = [currentUser.id, friendProfile.id].sort().join('_');
-      currentRoom = { type: 'dm', id: dmRoomId, name: friendProfile.username, inviteCode: '' };
-      document.getElementById('friends-view').classList.add('hidden');
-      document.getElementById('chat-view').classList.remove('hidden');
-      document.getElementById('chat-header-title').textContent = `@ ${friendProfile.username}`;
-      document.getElementById('message-input').placeholder = `${friendProfile.username} へメッセージを送信`;
-
-      await loadMessages();
-      subscribeMessages();
-    }
-
-    // メッセージ送受信
-    async function loadMessages() {
-      let query = sb.from('messages').select('*, profiles(*)').order('created_at', { ascending: true }).limit(100);
-      if (currentRoom.type === 'server') {
-        query = query.eq('server_id', currentRoom.id);
-      } else {
-        query = query.eq('dm_id', currentRoom.id);
+    function closeDrawerOnMobile() {
+      if (mobileDrawerOpen) {
+        mobileDrawerOpen = false;
+        renderMainApp();
       }
-
-      const { data } = await query;
-      const container = document.getElementById('messages-container');
-      container.innerHTML = '';
-
-      if (!data || data.length === 0) {
-        container.innerHTML = '<div class="text-center text-gray-400 text-sm py-10">まだメッセージがありません。最初の挨拶を送ってみましょう！</div>';
-        return;
-      }
-
-      data.forEach(msg => renderMessage(msg));
-      container.scrollTop = container.scrollHeight;
     }
 
-    function renderMessage(msg) {
-      const container = document.getElementById('messages-container');
-      if (container.querySelector('.text-center')) container.innerHTML = '';
-
-      const p = msg.profiles || { username: 'ユーザー', avatar_color: '#5865F2', avatar_url: null };
-      const time = new Date(msg.created_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
-
-      const div = document.createElement('div');
-      div.className = 'flex items-start gap-3 hover:bg-[#2e3035] p-1.5 rounded-lg';
-      div.innerHTML = `
-        <div class="w-10 h-10 rounded-full shrink-0 flex items-center justify-center text-white font-bold text-sm overflow-hidden bg-cover bg-center" style="${p.avatar_url ? `background-image:url(${p.avatar_url})` : `background-color:${p.avatar_color || '#5865F2'}`}">
-          ${p.avatar_url ? '' : escapeHtml(p.username.slice(0, 1).toUpperCase())}
-        </div>
-        <div class="min-w-0 flex-1">
-          <div class="flex items-baseline gap-2">
-            <span class="font-bold text-white text-sm">${escapeHtml(p.username)}</span>
-            <span class="text-[11px] text-gray-400">${time}</span>
-          </div>
-          <p class="text-sm text-gray-200 break-words whitespace-pre-wrap mt-0.5">${escapeHtml(msg.content)}</p>
-        </div>
-      `;
-      container.appendChild(div);
+    function setFriendTab(tab) {
+      activeTab = tab;
+      renderMainApp();
     }
 
-    function subscribeMessages() {
-      if (msgSubscription) sb.removeChannel(msgSubscription);
-      msgSubscription = sb
-        .channel('room-' + currentRoom.id)
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async (payload) => {
-          const newMsg = payload.new;
-          const match = currentRoom.type === 'server'
-            ? newMsg.server_id === currentRoom.id
-            : newMsg.dm_id === currentRoom.id;
-
-          if (match) {
-            const { data: prof } = await sb.from('profiles').select('*').eq('id', newMsg.sender_id).single();
-            newMsg.profiles = prof;
-            renderMessage(newMsg);
-            const container = document.getElementById('messages-container');
-            container.scrollTop = container.scrollHeight;
-          }
-        })
-        .subscribe();
+    async function switchToFriends() {
+      currentView = { type: 'friends', id: null, name: 'フレンド' };
+      mobileDrawerOpen = false;
+      await fetchFriends();
+      renderMainApp();
     }
 
-    async function sendMessage(e) {
+    async function switchToServer(serverId, serverName, inviteCode) {
+      currentView = { type: 'server', id: serverId, name: serverName, inviteCode };
+      mobileDrawerOpen = false;
+
+      const [{ data: msgs }, { data: members }] = await Promise.all([
+        supabase
+          .from('messages')
+          .select('*, sender:profiles(*)')
+          .eq('server_id', serverId)
+          .order('created_at', { ascending: true })
+          .limit(100),
+        supabase
+          .from('server_members')
+          .select('profiles(*)')
+          .eq('server_id', serverId)
+      ]);
+
+      messages = msgs || [];
+      serverMembers = (members || []).map(m => m.profiles).filter(Boolean);
+      renderMainApp();
+      scrollToBottom();
+    }
+
+    async function switchToDm(friendId, friendName) {
+      const dmRoomId = getDmRoomId(currentUser.id, friendId);
+      currentView = { type: 'dm', id: dmRoomId, name: friendName };
+      mobileDrawerOpen = false;
+
+      const { data: msgs } = await supabase
+        .from('messages')
+        .select('*, sender:profiles(*)')
+        .eq('dm_id', dmRoomId)
+        .order('created_at', { ascending: true })
+        .limit(100);
+
+      messages = msgs || [];
+      renderMainApp();
+      scrollToBottom();
+    }
+
+    async function handleSendMessage(e) {
       e.preventDefault();
       const input = document.getElementById('message-input');
       const content = input.value.trim();
       if (!content) return;
-
       input.value = '';
+
       const payload = {
+        room_id: currentView.id,
         sender_id: currentUser.id,
-        content,
-        room_id: currentRoom.id,
-        server_id: currentRoom.type === 'server' ? currentRoom.id : null,
-        dm_id: currentRoom.type === 'dm' ? currentRoom.id : null
+        content
       };
+      if (currentView.type === 'server') {
+        payload.server_id = currentView.id;
+      } else {
+        payload.dm_id = currentView.id;
+      }
 
-      const { error } = await sb.from('messages').insert(payload);
-      if (error) alert('送信エラー: ' + error.message);
+      const { error } = await supabase.from('messages').insert(payload);
+      if (error) {
+        alert('送信エラー: ' + error.message);
+      }
     }
 
-    function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
-    function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
-    function toggleSidebar() { document.getElementById('sidebar-panel').classList.toggle('hidden'); }
+    async function sendFriendRequest() {
+      const input = document.getElementById('friend-tag-input').value.trim();
+      const parts = input.split('#');
+      if (parts.length !== 2) {
+        alert('「ユーザー名#4桁コード」の形式で入力してください（例: 太郎#1234）');
+        return;
+      }
+      const [targetName, targetCode] = parts;
+
+      const { data: targetUser } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('username', targetName)
+        .eq('friend_code', targetCode)
+        .single();
+
+      if (!targetUser) return alert('ユーザーが見つかりませんでした');
+      if (targetUser.id === currentUser.id) return alert('自分自身には申請できません');
+
+      const { error } = await supabase.from('friendships').insert({
+        requester_id: currentUser.id,
+        addressee_id: targetUser.id,
+        status: 'pending'
+      });
+
+      if (error) return alert('すでに申請済みか、フレンドになっています');
+      alert(`${targetName}#${targetCode} にフレンド申請を送りました！`);
+      document.getElementById('friend-tag-input').value = '';
+    }
+
+    async function acceptFriend(friendshipId) {
+      await supabase
+        .from('friendships')
+        .update({ status: 'accepted' })
+        .eq('id', friendshipId);
+      await fetchFriends();
+      renderMainApp();
+    }
+
+    function copyInviteCode(code) {
+      navigator.clipboard?.writeText(code);
+      alert('招待コード「' + code + '」をコピーしました！友達に教えてあげてください。');
+    }
+
+    function getDmRoomId(id1, id2) {
+      return [id1, id2].sort().join('_');
+    }
+
+    function scrollToBottom() {
+      setTimeout(() => {
+        const container = document.getElementById('messages-container');
+        if (container) container.scrollTop = container.scrollHeight;
+      }, 50);
+    }
+
     function escapeHtml(str) {
-      return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
     }
+
+    function escapeJs(str) {
+      if (!str) return '';
+      return String(str).replace(/'/g, "\'");
+    }
+
+    // アプリ起動
+    init();
   </script>
 </body>
 </html>
