@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Raphael</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <style>
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #2b2d31; }
+    ::-webkit-scrollbar-thumb { background: #1a1b1e; border-radius: 3px; }
+  </style>
+</head>
+<body class="bg-[#313338] text-[#dbdee1] font-sans antialiased selection:bg-[#5865f2] selection:text-white">
+  <div id="app" class="h-screen w-screen overflow-hidden flex flex-col"></div>
+
+  <script>
+    const { createClient } = supabase;
+    let sb = null;
+    let currentUser = null;
+    let currentProfile = null;
+    let servers = [];
+    let activeView = { type: 'home', id: null }; // 'home' | 'server' | 'dm'
+    let activeTitle = 'フレンド';
+    let messages = [];
+    let friends = [];
+    let onlineUserIds = new Set();
+    let msgChannel = null;
+    let presenceChannel = null;
+
+    const appEl = document.getElementById('app');
+
+    function init() {
+      const savedUrl = localStorage.getItem('raphael_sb_url');
+      const savedKey = localStorage.getItem('raphael_sb_key');
+      if (!savedUrl || !savedKey) {
+        renderSetupScreen();
+        return;
+      }
+      try {
+        sb = createClient(savedUrl, savedKey);
+        checkAuth();
+      } catch (e) {
+        localStorage.removeItem('raphael_sb_url');
+        localStorage.removeItem('raphael_sb_key');
+        renderSetupScreen('接続エラーが発生しました。正しいURLとキーを入力してください。');
+      }
+    }
+
+    function renderSetupScreen(errorMsg = '') {
+      appEl.innerHTML = `
+        <div class="flex-1 flex items-center justify-center p-4 bg-[#1e1f22]">
+          <div class="w-full max-w-md bg-[#313338] p-6 rounded-xl shadow-2xl border border-[#1e1f22]">
+            <div class="text-center mb-6">
+              <h1 class="text-2xl font-bold text-white tracking-wide">Raphael 初期セットアップ</h1>
+              <p class="text-sm text-[#949ba4] mt-1">Supabaseの接続情報を入力して開始します</p>
+            </div>
+            ${errorMsg ? `<div class="mb-4 p-3 rounded bg-[#da373c]/20 border border-[#da373c] text-xs text-[#f23f43]">${errorMsg}</div>` : ''}
+            <div class="space-y-4">
+              <div>
+                <label class="block text-xs font-bold uppercase text-[#b5bac1] mb-1">Project URL</label>
+                <input id="sb-url" type="text" placeholder="https://xxxxxxxx.supabase.co" class="w-full px-3 py-2.5 rounded bg-[#1e1f22] text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#5865f2]" />
+              </div>
+              <div>
+                <label class="block text-xs font-bold uppercase text-[#b5bac1] mb-1">anon public key</label>
+                <input id="sb-key" type="text" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..." class="w-full px-3 py-2.5 rounded bg-[#1e1f22] text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#5865f2]" />
+              </div>
+              <button onclick="saveSetup()" class="w-full py-2.5 rounded bg-[#5865f2] hover:bg-[#4752c4] text-white font-semibold text-sm transition">保存して次へ</button>
+            </div>
+            <p class="text-xs text-[#949ba4] mt-4 text-center">※入力した情報はあなたのブラウザ内にのみ保存されます。</p>
+          </div>
+        </div>
+      `;
+    }
+
+    window.saveSetup = function() {
+      const url = document.getElementById('sb-url').value.trim();
+      const key = document.getElementById('sb-key').value.trim();
+      if (!url || !key) {
+        alert('URLとキーの両方を入力してください。');
+        return;
+      }
+      localStorage.setItem('raphael_sb_url', url);
+      localStorage.setItem('raphael_sb_key', key);
+      init();
+    };
+
+    window.resetSetup = function() {
+      if (confirm('Supabaseの接続設定をリセットしますか？')) {
+        localStorage.removeItem('raphael_sb_url');
+        localStorage.removeItem('raphael_sb_key');
+        location.reload();
+      }
+    };
+
+    async function checkAuth() {
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session) {
+        renderAuthScreen();
+      } else {
+        currentUser = session.user;
+        await loadUserData();
+      }
+    }
+
+    function renderAuthScreen(isSignUp = false, msg = '') {
+      appEl.innerHTML = `
+        <div class="flex-1 flex items-center justify-center p-4 bg-[#1e1f22]">
+          <div class="w-full max-w-md bg-[#313338] p-6 rounded-xl shadow-2xl">
+            <div class="text-center mb-6">
+              <div class="w-12 h-12 rounded-2xl bg-[#5865f2] text-white font-bold text-2xl flex items-center justify-center mx-auto mb-3 shadow-lg">R</div>
+              <h1 class="text-2xl font-bold text-white">${isSignUp ? 'Raphael アカウント作成' : 'Raphael へおかえりなさい！'}</h1>
+              <p class="text-sm text-[#949ba4] mt-1">${isSignUp ? '新しいアカウントを登録します' : 'メールアドレスとパスワードでログイン'}</p>
+            </div>
+            ${msg ? `<div class="mb-4 p-3 rounded bg-[#5865f2]/20 border border-[#5865f2] text-xs text-white">${msg}</div>` : ''}
+            <div class="space-y-4">
+              ${isSignUp ? `
+              <div>
+                <label class="block text-xs font-bold uppercase text-[#b5bac1] mb-1">ユーザー名</label>
+                <input id="auth-name" type="text" placeholder="表示される名前" class="w-full px-3 py-2.5 rounded bg-[#1e1f22] text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#5865f2]" />
+              </div>` : ''}
+              <div>
+                <label class="block text-xs font-bold uppercase text-[#b5bac1] mb-1">メールアドレス</label>
+                <input id="auth-email" type="email" placeholder="name@example.com" class="w-full px-3 py-2.5 rounded bg-[#1e1f22] text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#5865f2]" />
+              </div>
+              <div>
+                <label class="block text-xs font-bold uppercase text-[#b5bac1] mb-1">パスワード（6文字以上）</label>
+                <input id="auth-pass" type="password" placeholder="••••••••" class="w-full px-3 py-2.5 rounded bg-[#1e1f22] text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#5865f2]" />
+              </div>
+              <button onclick="handleAuth(${isSignUp})" class="w-full py-2.5 rounded bg-[#5865f2] hover:bg-[#4752c4] text-white font-semibold text-sm transition">
+                ${isSignUp ? '登録する' : 'ログイン'}
+              </button>
+            </div>
+            <div class="mt-4 flex items-center justify-between text-xs text-[#949ba4]">
+              <button onclick="renderAuthScreen(${!isSignUp})" class="text-[#00a8fc] hover:underline">
+                ${isSignUp ? 'すでにアカウントをお持ちの方はこちら' : 'アカウント登録はこちら'}
+              </button>
+              <button onclick="resetSetup()" class="hover:text-white">接続設定を変更</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    window.handleAuth = async function(isSignUp) {
+      const email = document.getElementById('auth-email').value.trim();
+      const password = document.getElementById('auth-pass').value.trim();
+      if (!email || !password) return alert('メールアドレスとパスワードを入力してください');
+
+      if (isSignUp) {
+        const username = document.getElementById('auth-name').value.trim() || email.split('@')[0];
+        const friendCode = Math.floor(1000 + Math.random() * 9000).toString();
+        const { data, error } = await sb.auth.signUp({
+          email,
+          password,
+          options: { data: { username, friend_code: friendCode } }
+        });
+        if (error) return alert('登録エラー: ' + error.message);
+        if (data.user) {
+          await sb.from('profiles').upsert({ id: data.user.id, username, friend_code: friendCode });
+          if (data.session) {
+            currentUser = data.user;
+            await loadUserData();
+          } else {
+            renderAuthScreen(false, '登録が完了しました！ログインしてください。');
+          }
+        }
+      } else {
+        const { data, error } = await sb.auth.signInWithPassword({ email, password });
+        if (error) return alert('ログインエラー: ' + error.message);
+        currentUser = data.user;
+        await loadUserData();
+      }
+    };
+
+    async function loadUserData() {
+      let { data: profile } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
+      if (!profile) {
+        const username = currentUser.user_metadata?.username || currentUser.email.split('@')[0];
+        const friendCode = Math.floor(1000 + Math.random() * 9000).toString();
+        const { data: newProf } = await sb.from('profiles').insert({ id: currentUser.id, username, friend_code: friendCode }).select().single();
+        profile = newProf;
+      }
+      currentProfile = profile;
+      setupPresence();
+      await fetchServers();
+      await fetchFriends();
+      renderMainApp();
+    }
+
+    function setupPresence() {
+      if (presenceChannel) sb.removeChannel(presenceChannel);
+      presenceChannel = sb.channel('online-users', {
+        config: { presence: { key: currentUser.id } }
+      });
+      presenceChannel
+        .on('presence', { event: 'sync' }, () => {
+          const state = presenceChannel.presenceState();
+          onlineUserIds = new Set(Object.keys(state));
+          updateOnlineIndicators();
+        })
+        .subscribe(async (status) => {
+          if (status === 'SUBSCRIBED') {
+            await presenceChannel.track({ user_id: currentUser.id, online_at: new Date().toISOString() });
+          }
+        });
+    }
+
+    function updateOnlineIndicators() {
+      document.querySelectorAll('[data-user-status]').forEach(el => {
+        const uid = el.getAttribute('data-user-status');
+        if (onlineUserIds.has(uid)) {
+          el.classList.remove('bg-[#80848e]');
+          el.classList.add('bg-[#23a55a]');
+        } else {
+          el.classList.remove('bg-[#23a55a]');
+          el.classList.add('bg-[#80848e]');
+        }
+      });
+    }
+
+    async function fetchServers() {
+      const { data } = await sb
+        .from('server_members')
+        .select('server_id, servers(id, name, invite_code, owner_id)')
+        .eq('user_id', currentUser.id);
+      servers = (data || []).map(d => d.servers).filter(Boolean);
+    }
+
+    async function fetchFriends() {
+      const { data } = await sb
+        .from('friendships')
+        .select('*, requester:profiles!friendships_requester_id_fkey(*), addressee:profiles!friendships_addressee_id_fkey(*)')
+        .or(`requester_id.eq.${currentUser.id},addressee_id.eq.${currentUser.id}`);
+      friends = data || [];
+    }
+
+    function renderMainApp() {
+      appEl.innerHTML = `
+        <div class="flex-1 flex overflow-hidden">
+          <!-- 左端：サーバーバー -->
+          <div class="w-[72px] bg-[#1e1f22] flex flex-col items-center py-3 gap-2 shrink-0 overflow-y-auto">
+            <button onclick="selectHome()" title="ホーム / フレンド" class="w-12 h-12 rounded-2xl ${activeView.type !== 'server' ? 'bg-[#5865f2] text-white' : 'bg-[#313338] text-[#dbdee1] hover:bg-[#5865f2] hover:text-white'} flex items-center justify-center font-bold text-lg transition shadow">
+              R
+            </button>
+            <div class="w-8 h-[2px] bg-[#35363c] rounded my-1"></div>
+            <div id="server-list" class="flex flex-col gap-2 items-center w-full">
+              ${servers.map(s => `
+                <button onclick="selectServer('${s.id}', '${escapeHtml(s.name)}', '${s.invite_code}')" title="${escapeHtml(s.name)}"
+                  class="w-12 h-12 rounded-2xl ${activeView.type === 'server' && activeView.id === s.id ? 'bg-[#5865f2] text-white' : 'bg-[#313338] text-[#dbdee1] hover:bg-[#5865f2] hover:text-white'} flex items-center justify-center font-bold text-sm transition overflow-hidden px-1">
+                  ${escapeHtml(s.name.slice(0, 3))}
+                </button>
+              `).join('')}
+            </div>
+            <button onclick="openServerModal()" title="サーバーを追加・参加" class="w-12 h-12 rounded-2xl bg-[#313338] hover:bg-[#23a55a] text-[#23a55a] hover:text-white flex items-center justify-center text-2xl font-light transition mt-1">
+              +
+            </button>
+          </div>
+
+          <!-- 中央左：チャンネル / フレンド一覧パネル -->
+          <div id="side-panel" class="w-60 bg-[#2b2d31] flex flex-col shrink-0 hidden sm:flex">
+            ${renderSidePanelContent()}
+          </div>
+
+          <!-- メインエリア -->
+          <div class="flex-1 bg-[#313338] flex flex-col min-w-0">
+            <!-- ヘッダー -->
+            <div class="h-12 px-4 border-b border-[#1e1f22] flex items-center justify-between shrink-0 shadow-sm">
+              <div class="flex items-center gap-2 min-w-0">
+                <button onclick="toggleMobileMenu()" class="sm:hidden p-1.5 rounded bg-[#2b2d31] text-white text-xs">メニュー</button>
+                <span class="font-bold text-white truncate">${escapeHtml(activeTitle)}</span>
+              </div>
+              <div id="header-actions" class="flex items-center gap-2 text-xs">
+                ${activeView.type === 'server' ? `<span class="bg-[#1e1f22] px-2 py-1 rounded text-[#b5bac1] select-all">招待コード: <strong class="text-white">${activeView.inviteCode || ''}</strong></span>` : ''}
+              </div>
+            </div>
+
+            <!-- コンテンツ領域 -->
+            <div id="main-content" class="flex-1 flex flex-col overflow-hidden">
+              ${activeView.type === 'home' ? renderFriendsView() : renderChatView()}
+            </div>
+          </div>
+        </div>
+
+        <!-- モバイル用ドロワー -->
+        <div id="mobile-drawer" class="fixed inset-0 bg-black/60 z-40 hidden sm:hidden" onclick="toggleMobileMenu()">
+          <div class="w-64 h-full bg-[#2b2d31] flex flex-col" onclick="event.stopPropagation()">
+            ${renderSidePanelContent()}
+          </div>
+        </div>
+
+        <!-- モーダル領域 -->
+        <div id="modal-container"></div>
+      `;
+
+      if (activeView.type === 'server' || activeView.type === 'dm') {
+        loadMessages();
+      }
+      updateOnlineIndicators();
+    }
+
+    function renderSidePanelContent() {
+      const acceptedFriends = friends.filter(f => f.status === 'accepted');
+      return `
+        <div class="h-12 px-4 border-b border-[#1e1f22] flex items-center justify-between font-bold text-white shadow-sm shrink-0">
+          <span class="truncate">${activeView.type === 'server' ? escapeHtml(activeTitle) : 'Raphael'}</span>
+        </div>
+        <div class="flex-1 overflow-y-auto p-2 space-y-1">
+          ${activeView.type === 'server' ? `
+            <div class="px-2 py-1 text-xs font-bold text-[#949ba4] uppercase">テキストチャンネル</div>
+            <div class="px-2 py-1.5 rounded bg-[#404249] text-white text-sm font-medium flex items-center gap-1.5">
+              <span class="text-[#949ba4]">#</span> 一般チャット
+            </div>
+          ` : `
+            <button onclick="selectHome()" class="w-full text-left px-2.5 py-2 rounded ${activeView.type === 'home' ? 'bg-[#404249] text-white' : 'text-[#949ba4] hover:bg-[#35373c] hover:text-[#dbdee1]'} text-sm font-medium">
+              フレンド管理
+            </button>
+            <div class="px-2 pt-3 pb-1 text-xs font-bold text-[#949ba4] uppercase">ダイレクトメッセージ</div>
+            ${acceptedFriends.length === 0 ? `<p class="px-2 text-xs text-[#949ba4]">フレンドを追加するとDMできます</p>` : ''}
+            ${acceptedFriends.map(f => {
+              const other = f.requester_id === currentUser.id ? f.addressee : f.requester;
+              if (!other) return '';
+              const isSelected = activeView.type === 'dm' && activeView.id === f.id;
+              return `
+                <button onclick="selectDm('${f.id}', '${escapeHtml(other.username)}')" class="w-full flex items-center gap-2.5 px-2 py-1.5 rounded ${isSelected ? 'bg-[#404249] text-white' : 'text-[#949ba4] hover:bg-[#35373c] hover:text-[#dbdee1]'}">
+                  <div class="relative w-8 h-8 rounded-full bg-[#5865f2] text-white flex items-center justify-center font-bold text-xs shrink-0">
+                    ${escapeHtml(other.username.slice(0, 1).toUpperCase())}
+                    <span data-user-status="${other.id}" class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#2b2d31] bg-[#80848e]"></span>
+                  </div>
+                  <span class="text-sm truncate">${escapeHtml(other.username)}</span>
+                </button>
+              `;
+            }).join('')}
+          `}
+        </div>
+        <!-- 自分のプロフィールバー -->
+        <div class="h-14 bg-[#232428] px-2.5 flex items-center justify-between shrink-0">
+          <div class="flex items-center gap-2 min-w-0">
+            <div class="relative w-8 h-8 rounded-full bg-[#5865f2] text-white flex items-center justify-center font-bold text-xs shrink-0">
+              ${escapeHtml((currentProfile?.username || 'U').slice(0, 1).toUpperCase())}
+              <span class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#232428] bg-[#23a55a]"></span>
+            </div>
+            <div class="min-w-0">
+              <div class="text-xs font-bold text-white truncate">${escapeHtml(currentProfile?.username || '')}</div>
+              <div class="text-[11px] text-[#949ba4]">#${currentProfile?.friend_code || '0000'}</div>
+            </div>
+          </div>
+          <button onclick="logout()" title="ログアウト" class="text-xs text-[#949ba4] hover:text-[#f23f43] px-2 py-1 rounded">退出</button>
+        </div>
+      `;
+    }
+
+    function renderFriendsView() {
+      const pendingReceived = friends.filter(f => f.status === 'pending' && f.addressee_id === currentUser.id);
+      const accepted = friends.filter(f => f.status === 'accepted');
+
+      return `
+        <div class="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 max-w-3xl w-full mx-auto">
+          <!-- フレンド追加 -->
+          <div class="bg-[#2b2d31] p-4 rounded-lg border border-[#1e1f22]">
+            <h2 class="text-sm font-bold text-white uppercase mb-1">フレンドを追加</h2>
+            <p class="text-xs text-[#949ba4] mb-3">相手の「ユーザー名#4桁コード」を入力して申請します（あなたのID: <strong class="text-white select-all">${escapeHtml(currentProfile?.username || '')}#${currentProfile?.friend_code || ''}</strong>）</p>
+            <div class="flex gap-2">
+              <input id="friend-tag-input" type="text" placeholder="例: ユーザー名#1234" class="flex-1 px-3 py-2 rounded bg-[#1e1f22] text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#5865f2]" />
+              <button onclick="sendFriendRequest()" class="px-4 py-2 rounded bg-[#5865f2] hover:bg-[#4752c4] text-white text-sm font-semibold shrink-0">申請送信</button>
+            </div>
+          </div>
+
+          <!-- 届いている申請 -->
+          ${pendingReceived.length > 0 ? `
+          <div>
+            <h3 class="text-xs font-bold text-[#949ba4] uppercase mb-2">保留中のフレンド申請 — ${pendingReceived.length}</h3>
+            <div class="space-y-2">
+              ${pendingReceived.map(f => `
+                <div class="flex items-center justify-between p-3 rounded bg-[#2b2d31]">
+                  <div class="font-medium text-white text-sm">${escapeHtml(f.requester?.username || '不明')} <span class="text-xs text-[#949ba4]">#${f.requester?.friend_code || ''}</span></div>
+                  <div class="flex gap-2">
+                    <button onclick="acceptFriend('${f.id}')" class="px-3 py-1 rounded bg-[#23a55a] hover:bg-[#1a7f42] text-white text-xs font-bold">承認</button>
+                    <button onclick="removeFriend('${f.id}')" class="px-3 py-1 rounded bg-[#da373c] hover:bg-[#a12828] text-white text-xs font-bold">拒否</button>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>` : ''}
+
+          <!-- フレンド一覧 -->
+          <div>
+            <h3 class="text-xs font-bold text-[#949ba4] uppercase mb-2">すべてのフレンド — ${accepted.length}</h3>
+            ${accepted.length === 0 ? `<div class="text-sm text-[#949ba4] py-8 text-center bg-[#2b2d31]/50 rounded-lg">まだフレンドがいません。上の欄から追加してみましょう！</div>` : `
+              <div class="space-y-2">
+                ${accepted.map(f => {
+                  const other = f.requester_id === currentUser.id ? f.addressee : f.requester;
+                  if (!other) return '';
+                  return `
+                    <div class="flex items-center justify-between p-3 rounded bg-[#2b2d31] hover:bg-[#35373c] transition">
+                      <div class="flex items-center gap-3">
+                        <div class="relative w-9 h-9 rounded-full bg-[#5865f2] text-white flex items-center justify-center font-bold text-sm">
+                          ${escapeHtml(other.username.slice(0, 1).toUpperCase())}
+                          <span data-user-status="${other.id}" class="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-[#2b2d31] bg-[#80848e]"></span>
+                        </div>
+                        <div>
+                          <div class="text-sm font-bold text-white">${escapeHtml(other.username)}</div>
+                          <div class="text-xs text-[#949ba4]">#${other.friend_code}</div>
+                        </div>
+                      </div>
+                      <button onclick="selectDm('${f.id}', '${escapeHtml(other.username)}')" class="px-3 py-1.5 rounded bg-[#4e5058] hover:bg-[#6d6f78] text-white text-xs font-medium">メッセージ</button>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            `}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderChatView() {
+      return `
+        <div id="messages-box" class="flex-1 overflow-y-auto p-4 space-y-4">
+          <div class="text-center text-xs text-[#949ba4] py-4">メッセージを読み込み中...</div>
+        </div>
+        <div class="p-4 pt-0 shrink-0">
+          <form onsubmit="sendMessage(event)" class="flex gap-2 bg-[#383a40] rounded-lg px-3 py-2">
+            <input id="msg-input" type="text" autocomplete="off" placeholder="${escapeHtml(activeTitle)} へメッセージを送信" class="flex-1 bg-transparent text-white text-sm focus:outline-none" />
+            <button type="submit" class="px-3 py-1 rounded bg-[#5865f2] hover:bg-[#4752c4] text-white text-xs font-bold">送信</button>
+          </form>
+        </div>
+      `;
+    }
+
+    async function loadMessages() {
+      if (msgChannel) sb.removeChannel(msgChannel);
+      const targetColumn = activeView.type === 'server' ? 'server_id' : 'dm_id';
+      const targetId = activeView.id;
+
+      const { data } = await sb
+        .from('messages')
+        .select('*, sender:profiles(username)')
+        .eq(targetColumn, targetId)
+        .order('created_at', { ascending: true })
+        .limit(100);
+
+      messages = data || [];
+      renderMessagesList();
+
+      msgChannel = sb.channel(`chat-${targetId}`)
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `${targetColumn}=eq.${targetId}`
+        }, async (payload) => {
+          const { data: senderData } = await sb.from('profiles').select('username').eq('id', payload.new.sender_id).single();
+          messages.push({ ...payload.new, sender: senderData });
+          renderMessagesList();
+        })
+        .subscribe();
+    }
+
+    function renderMessagesList() {
+      const box = document.getElementById('messages-box');
+      if (!box) return;
+      if (messages.length === 0) {
+        box.innerHTML = `<div class="text-center text-xs text-[#949ba4] py-10">まだメッセージがありません。最初の挨拶を送ってみましょう！</div>`;
+        return;
+      }
+      box.innerHTML = messages.map(m => {
+        const name = m.sender?.username || 'ユーザー';
+        const time = new Date(m.created_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+        return `
+          <div class="flex items-start gap-3 hover:bg-[#2e3035] -mx-2 px-2 py-1 rounded">
+            <div class="w-9 h-9 rounded-full bg-[#5865f2] text-white flex items-center justify-center font-bold text-sm shrink-0 mt-0.5">
+              ${escapeHtml(name.slice(0, 1).toUpperCase())}
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-baseline gap-2">
+                <span class="font-bold text-white text-sm">${escapeHtml(name)}</span>
+                <span class="text-[11px] text-[#949ba4]">${time}</span>
+              </div>
+              <p class="text-sm text-[#dbdee1] break-words whitespace-pre-wrap mt-0.5">${escapeHtml(m.content)}</p>
+            </div>
+          </div>
+        `;
+      }).join('');
+      box.scrollTop = box.scrollHeight;
+    }
+
+    window.sendMessage = async function(e) {
+      e.preventDefault();
+      const input = document.getElementById('msg-input');
+      const content = input.value.trim();
+      if (!content) return;
+      input.value = '';
+
+      const row = {
+        sender_id: currentUser.id,
+        content,
+        server_id: activeView.type === 'server' ? activeView.id : null,
+        dm_id: activeView.type === 'dm' ? activeView.id : null
+      };
+      const { error } = await sb.from('messages').insert(row);
+      if (error) alert('送信エラー: ' + error.message);
+    };
+
+    window.selectHome = async function() {
+      activeView = { type: 'home', id: null };
+      activeTitle = 'フレンド';
+      await fetchFriends();
+      renderMainApp();
+    };
+
+    window.selectServer = function(id, name, inviteCode) {
+      activeView = { type: 'server', id, inviteCode };
+      activeTitle = name;
+      renderMainApp();
+    };
+
+    window.selectDm = function(dmId, friendName) {
+      activeView = { type: 'dm', id: dmId };
+      activeTitle = `@ ${friendName}`;
+      renderMainApp();
+    };
+
+    window.toggleMobileMenu = function() {
+      const drawer = document.getElementById('mobile-drawer');
+      drawer.classList.toggle('hidden');
+    };
+
+    window.openServerModal = function() {
+      const modal = document.getElementById('modal-container');
+      modal.innerHTML = `
+        <div class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onclick="closeModal()">
+          <div class="bg-[#313338] w-full max-w-md rounded-xl p-6 space-y-5 shadow-2xl" onclick="event.stopPropagation()">
+            <h2 class="text-xl font-bold text-white text-center">サーバーを作成または参加</h2>
+            <div class="space-y-2">
+              <label class="block text-xs font-bold uppercase text-[#b5bac1]">新しいサーバーを作成</label>
+              <div class="flex gap-2">
+                <input id="new-server-name" type="text" placeholder="サーバー名（例: 雑談部屋）" class="flex-1 px-3 py-2 rounded bg-[#1e1f22] text-white text-sm focus:outline-none" />
+                <button onclick="createServer()" class="px-4 py-2 rounded bg-[#5865f2] hover:bg-[#4752c4] text-white text-sm font-bold">作成</button>
+              </div>
+            </div>
+            <div class="border-t border-[#3f4147] pt-4 space-y-2">
+              <label class="block text-xs font-bold uppercase text-[#b5bac1]">招待コードでサーバーに参加</label>
+              <div class="flex gap-2">
+                <input id="join-invite-code" type="text" placeholder="6桁の招待コード" class="flex-1 px-3 py-2 rounded bg-[#1e1f22] text-white text-sm focus:outline-none" />
+                <button onclick="joinServer()" class="px-4 py-2 rounded bg-[#23a55a] hover:bg-[#1a7f42] text-white text-sm font-bold">参加</button>
+              </div>
+            </div>
+            <button onclick="closeModal()" class="w-full py-2 text-xs text-[#949ba4] hover:text-white">閉じる</button>
+          </div>
+        </div>
+      `;
+    };
+
+    window.closeModal = function() {
+      document.getElementById('modal-container').innerHTML = '';
+    };
+
+    window.createServer = async function() {
+      const name = document.getElementById('new-server-name').value.trim();
+      if (!name) return alert('サーバー名を入力してください');
+      const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const { data: srv, error } = await sb.from('servers').insert({ name, owner_id: currentUser.id, invite_code: inviteCode }).select().single();
+      if (error) return alert('作成エラー: ' + error.message);
+      await sb.from('server_members').insert({ server_id: srv.id, user_id: currentUser.id });
+      closeModal();
+      await fetchServers();
+      selectServer(srv.id, srv.name, srv.invite_code);
+    };
+
+    window.joinServer = async function() {
+      const code = document.getElementById('join-invite-code').value.trim().toUpperCase();
+      if (!code) return alert('招待コードを入力してください');
+      const { data: srv } = await sb.from('servers').select('*').eq('invite_code', code).single();
+      if (!srv) return alert('該当するサーバーが見つかりません');
+      await sb.from('server_members').upsert({ server_id: srv.id, user_id: currentUser.id });
+      closeModal();
+      await fetchServers();
+      selectServer(srv.id, srv.name, srv.invite_code);
+    };
+
+    window.sendFriendRequest = async function() {
+      const raw = document.getElementById('friend-tag-input').value.trim();
+      const parts = raw.split('#');
+      if (parts.length !== 2) return alert('「ユーザー名#1234」の形式で入力してください');
+      const [username, friend_code] = parts;
+      const { data: target } = await sb.from('profiles').select('*').eq('username', username).eq('friend_code', friend_code).single();
+      if (!target) return alert('ユーザーが見つかりませんでした');
+      if (target.id === currentUser.id) return alert('自分自身には申請できません');
+      const { error } = await sb.from('friendships').insert({ requester_id: currentUser.id, addressee_id: target.id, status: 'pending' });
+      if (error) return alert('すでに申請済みかエラーが発生しました');
+      alert(`${target.username} さんにフレンド申請を送りました！`);
+      document.getElementById('friend-tag-input').value = '';
+      await fetchFriends();
+      renderMainApp();
+    };
+
+    window.acceptFriend = async function(id) {
+      await sb.from('friendships').update({ status: 'accepted' }).eq('id', id);
+      await fetchFriends();
+      renderMainApp();
+    };
+
+    window.removeFriend = async function(id) {
+      await sb.from('friendships').delete().eq('id', id);
+      await fetchFriends();
+      renderMainApp();
+    };
+
+    window.logout = async function() {
+      await sb.auth.signOut();
+      location.reload();
+    };
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    }
+
+    init();
+  </script>
+</body>
+</html>
