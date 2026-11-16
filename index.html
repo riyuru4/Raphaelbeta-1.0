@@ -5,1185 +5,980 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Raphael</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
-    body { background-color: #313338; color: #f2f3f5; font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif; margin: 0; overflow: hidden; }
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: #2b2d31; }
-    ::-webkit-scrollbar-thumb { background: #1a1b1e; border-radius: 3px; }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100dvh;
+      background-color: #313338;
+      color: #f2f3f5;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      overflow: hidden;
+    }
+    .scroll-area {
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior-y: contain;
+    }
+    .scroll-area::-webkit-scrollbar { width: 5px; }
+    .scroll-area::-webkit-scrollbar-thumb { background: #1e1f22; border-radius: 3px; }
   </style>
 </head>
 <body>
-  <div id="root"></div>
+  <div id="app" class="w-full h-full flex flex-col"></div>
 
-  <script type="text/babel">
-    const { useState, useEffect, useRef } = React;
+  <script>
+    let supabaseClient = null;
+    let currentUser = null;
+    let currentProfile = null;
+    let servers = [];
+    let activeServerId = null; // null = ホーム(フレンド/DM)
+    let activeDmUser = null;
+    let friends = [];
+    let pendingRequests = [];
+    let onlineUserIds = new Set();
+    let messages = [];
+    let serverMembers = [];
+    let serverRoles = [];
+    let memberRoles = [];
+    let isSidebarOpen = false;
+    let modalType = null; // 'profile' | 'createServer' | 'joinServer' | 'serverSettings'
+    let settingsTab = 'roles'; // 'roles' | 'members'
+    let realtimeChannels = [];
 
-    function Avatar({ profile, size = "md", online = false }) {
-      const sizeClasses = {
-        sm: "w-8 h-8 text-xs",
-        md: "w-10 h-10 text-sm",
-        lg: "w-16 h-16 text-xl",
-        xl: "w-20 h-20 text-2xl"
-      };
+    const SUPABASE_URL_DEFAULT = "https://huzzkisjvjdyljkvmeze.supabase.co";
+
+    function escapeHtml(str) {
+      if (!str) return "";
+      return String(str).replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+    }
+
+    function getAvatarHtml(profile, sizeClass = "w-10 h-10 text-sm", showStatus = false) {
       const name = profile?.username || "?";
       const color = profile?.avatar_color || "#5865F2";
-      const avatarUrl = profile?.avatar_url;
-
-      return (
-        <div className={`relative inline-flex items-center justify-center rounded-full font-bold text-white shrink-0 select-none ${sizeClasses[size]}`} style={{ backgroundColor: avatarUrl ? 'transparent' : color }}>
-          {avatarUrl ? (
-            <img src={avatarUrl} alt={name} className="w-full h-full object-cover rounded-full" />
-          ) : (
-            <span>{name.slice(0, 1).toUpperCase()}</span>
-          )}
-          {online && (
-            <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-[#2b2d31] rounded-full"></span>
-          )}
-        </div>
-      );
+      const isOnline = profile?.id && onlineUserIds.has(profile.id);
+      const statusDot = showStatus
+        ? `<span class="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[#2b2d31] ${isOnline ? 'bg-green-500' : 'bg-gray-500'}"></span>`
+        : "";
+      if (profile?.avatar_url) {
+        return `<div class="relative inline-flex shrink-0 ${sizeClass}">
+          <img src="${escapeHtml(profile.avatar_url)}" class="w-full h-full rounded-full object-cover" />
+          ${statusDot}
+        </div>`;
+      }
+      return `<div class="relative inline-flex items-center justify-center rounded-full font-bold text-white shrink-0 ${sizeClass}" style="background:${escapeHtml(color)}">
+        ${escapeHtml(name.slice(0, 1).toUpperCase())}
+        ${statusDot}
+      </div>`;
     }
 
-    function App() {
-      const [supabaseUrl, setSupabaseUrl] = useState(localStorage.getItem('raphael_sb_url') || 'https://huzzkisjvjdyljkvmeze.supabase.co');
-      const [supabaseKey, setSupabaseKey] = useState(localStorage.getItem('raphael_sb_key') || '');
-      const [supabase, setSupabase] = useState(null);
+    function getUserTopRole(userId) {
+      if (!activeServerId) return null;
+      const uRoleIds = memberRoles.filter(mr => mr.server_id === activeServerId && mr.user_id === userId).map(mr => mr.role_id);
+      if (uRoleIds.length === 0) return null;
+      return serverRoles.find(r => uRoleIds.includes(r.id)) || null;
+    }
 
-      const [session, setSession] = useState(null);
-      const [profile, setProfile] = useState(null);
-      const [profilesMap, setProfilesMap] = useState({});
-      const [onlineUsers, setOnlineUsers] = useState(new Set());
-
-      // Auth states
-      const [isSignUp, setIsSignUp] = useState(false);
-      const [email, setEmail] = useState('');
-      const [password, setPassword] = useState('');
-      const [usernameInput, setUsernameInput] = useState('');
-      const [authLoading, setAuthLoading] = useState(false);
-
-      // Navigation & UI states
-      const [sidebarOpen, setSidebarOpen] = useState(false);
-      const [activeView, setActiveView] = useState('friends'); // 'friends' | 'server' | 'dm'
-      const [servers, setServers] = useState([]);
-      const [activeServer, setActiveServer] = useState(null);
-      const [activeDmUser, setActiveDmUser] = useState(null);
-
-      // Messages
-      const [messages, setMessages] = useState([]);
-      const [newMessage, setNewMessage] = useState('');
-      const messagesEndRef = useRef(null);
-
-      // Friends
-      const [friendships, setFriendships] = useState([]);
-      const [friendInput, setFriendInput] = useState('');
-
-      // Server Creation / Join Modals
-      const [showServerModal, setShowServerModal] = useState(false);
-      const [serverModalTab, setServerModalTab] = useState('create');
-      const [newServerName, setNewServerName] = useState('');
-      const [inviteCodeInput, setInviteCodeInput] = useState('');
-
-      // Profile Edit Modal
-      const [showProfileModal, setShowProfileModal] = useState(false);
-      const [editName, setEditName] = useState('');
-      const [editColor, setEditColor] = useState('#5865F2');
-      const [editAvatarUrl, setEditAvatarUrl] = useState('');
-
-      // Server Settings & Roles Modal
-      const [showServerSettings, setShowServerSettings] = useState(false);
-      const [settingsTab, setSettingsTab] = useState('roles'); // 'roles' | 'members' | 'invite'
-      const [serverRoles, setServerRoles] = useState([]);
-      const [memberRoles, setMemberRoles] = useState([]);
-      const [serverMembers, setServerMembers] = useState([]);
-      const [newRoleName, setNewRoleName] = useState('');
-      const [newRoleColor, setNewRoleColor] = useState('#e91e63');
-      const [permSend, setPermSend] = useState(true);
-      const [permDelete, setPermDelete] = useState(false);
-      const [permManageRoles, setPermManageRoles] = useState(false);
-      const [permKick, setPermKick] = useState(false);
-
-      // Initialize Supabase
-      useEffect(() => {
-        if (supabaseUrl && supabaseKey) {
-          try {
-            const client = window.supabase.createClient(supabaseUrl.trim(), supabaseKey.trim());
-            setSupabase(client);
-          } catch (e) {
-            console.error(e);
-          }
-        }
-      }, [supabaseUrl, supabaseKey]);
-
-      const handleSaveConfig = (e) => {
-        e.preventDefault();
-        if (!supabaseUrl || !supabaseKey) return alert('URLとキーを入力してください');
-        localStorage.setItem('raphael_sb_url', supabaseUrl.trim());
-        localStorage.setItem('raphael_sb_key', supabaseKey.trim());
-        const client = window.supabase.createClient(supabaseUrl.trim(), supabaseKey.trim());
-        setSupabase(client);
+    function getUserPermissions(userId) {
+      const srv = servers.find(s => s.id === activeServerId);
+      if (!srv) return { canSend: true, canDelete: false, canManageRoles: false, canKick: false, isOwner: false };
+      if (srv.owner_id === userId) {
+        return { canSend: true, canDelete: true, canManageRoles: true, canKick: true, isOwner: true };
+      }
+      const uRoleIds = memberRoles.filter(mr => mr.server_id === activeServerId && mr.user_id === userId).map(mr => mr.role_id);
+      const uRoles = serverRoles.filter(r => uRoleIds.includes(r.id));
+      if (uRoles.length === 0) {
+        return { canSend: true, canDelete: false, canManageRoles: false, canKick: false, isOwner: false };
+      }
+      return {
+        canSend: uRoles.some(r => r.can_send_messages),
+        canDelete: uRoles.some(r => r.can_delete_messages),
+        canManageRoles: uRoles.some(r => r.can_manage_roles),
+        canKick: uRoles.some(r => r.can_kick_members),
+        isOwner: false
       };
+    }
 
-      // Session & Presence
-      useEffect(() => {
-        if (!supabase) return;
-        supabase.auth.getSession().then(({ data: { session } }) => {
-          setSession(session);
+    function init() {
+      const savedUrl = localStorage.getItem("raphael_supabase_url") || SUPABASE_URL_DEFAULT;
+      const savedKey = localStorage.getItem("raphael_supabase_key") || "";
+      if (savedUrl && savedKey) {
+        connectSupabase(savedUrl, savedKey);
+      } else {
+        renderSetupScreen(savedUrl);
+      }
+    }
+
+    function renderSetupScreen(defaultUrl = "") {
+      document.getElementById("app").innerHTML = `
+        <div class="w-full h-full flex items-center justify-center p-4 bg-[#1e1f22] scroll-area">
+          <div class="w-full max-w-md bg-[#2b2d31] p-6 rounded-xl shadow-lg">
+            <div class="w-12 h-12 rounded-2xl bg-[#5865F2] flex items-center justify-center text-white font-bold text-xl mx-auto mb-3">R</div>
+            <h1 class="text-xl font-bold text-center mb-1">Raphael 初期セットアップ</h1>
+            <p class="text-xs text-gray-400 text-center mb-5">Supabaseの接続情報を入力してください</p>
+            <label class="block text-xs font-bold text-gray-300 mb-1">PROJECT URL</label>
+            <input id="setup-url" type="text" value="${escapeHtml(defaultUrl)}" placeholder="https://xxxx.supabase.co" class="w-full p-2.5 rounded bg-[#1e1f22] text-white text-sm mb-3 outline-none border border-gray-700 focus:border-[#5865F2]" />
+            <label class="block text-xs font-bold text-gray-300 mb-1">ANON PUBLIC KEY</label>
+            <input id="setup-key" type="text" placeholder="sb_publishable_... または eyJhb..." class="w-full p-2.5 rounded bg-[#1e1f22] text-white text-sm mb-4 outline-none border border-gray-700 focus:border-[#5865F2]" />
+            <button onclick="saveSetup()" class="w-full py-2.5 rounded bg-[#5865F2] hover:bg-[#4752c4] text-white font-bold text-sm">保存して次へ</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function saveSetup() {
+      const url = document.getElementById("setup-url").value.trim();
+      const key = document.getElementById("setup-key").value.trim();
+      if (!url || !key) return alert("URLとキーを入力してください");
+      localStorage.setItem("raphael_supabase_url", url);
+      localStorage.setItem("raphael_supabase_key", key);
+      connectSupabase(url, key);
+    }
+
+    async function connectSupabase(url, key) {
+      try {
+        supabaseClient = window.supabase.createClient(url, key);
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        if (session?.user) {
+          currentUser = session.user;
+          await bootstrapApp();
+        } else {
+          renderAuthScreen(false);
+        }
+      } catch (e) {
+        alert("接続エラー: " + e.message);
+        renderSetupScreen(url);
+      }
+    }
+
+    function renderAuthScreen(isRegister = false) {
+      document.getElementById("app").innerHTML = `
+        <div class="w-full h-full flex items-center justify-center p-4 bg-[#1e1f22] scroll-area">
+          <div class="w-full max-w-md bg-[#2b2d31] p-6 rounded-xl shadow-lg">
+            <div class="w-12 h-12 rounded-2xl bg-[#5865F2] flex items-center justify-center text-white font-bold text-xl mx-auto mb-3">R</div>
+            <h1 class="text-xl font-bold text-center mb-4">${isRegister ? "Raphael アカウント作成" : "Raphael にログイン"}</h1>
+            ${isRegister ? `
+              <label class="block text-xs font-bold text-gray-300 mb-1">ユーザー名</label>
+              <input id="auth-username" type="text" placeholder="表示名" class="w-full p-2.5 rounded bg-[#1e1f22] text-white text-sm mb-3 outline-none" />
+            ` : ""}
+            <label class="block text-xs font-bold text-gray-300 mb-1">メールアドレス</label>
+            <input id="auth-email" type="email" placeholder="example@mail.com" class="w-full p-2.5 rounded bg-[#1e1f22] text-white text-sm mb-3 outline-none" />
+            <label class="block text-xs font-bold text-gray-300 mb-1">パスワード（6文字以上）</label>
+            <input id="auth-password" type="password" placeholder="••••••" class="w-full p-2.5 rounded bg-[#1e1f22] text-white text-sm mb-4 outline-none" />
+            <button onclick="handleAuth(${isRegister})" class="w-full py-2.5 rounded bg-[#5865F2] hover:bg-[#4752c4] text-white font-bold text-sm mb-3">
+              ${isRegister ? "登録する" : "ログイン"}
+            </button>
+            <div class="flex justify-between text-xs text-gray-400">
+              <button onclick="renderAuthScreen(${!isRegister})" class="text-[#00a8fc] hover:underline">
+                ${isRegister ? "ログインはこちら" : "新規登録はこちら"}
+              </button>
+              <button onclick="resetSetup()" class="hover:underline">接続設定を変更</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function resetSetup() {
+      localStorage.removeItem("raphael_supabase_key");
+      renderSetupScreen(localStorage.getItem("raphael_supabase_url") || SUPABASE_URL_DEFAULT);
+    }
+
+    async function handleAuth(isRegister) {
+      const email = document.getElementById("auth-email").value.trim();
+      const password = document.getElementById("auth-password").value;
+      if (!email || !password) return alert("メールアドレスとパスワードを入力してください");
+
+      if (isRegister) {
+        const username = document.getElementById("auth-username").value.trim() || email.split("@")[0];
+        const { data, error } = await supabaseClient.auth.signUp({
+          email,
+          password,
+          options: { data: { username } }
         });
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-          setSession(session);
-        });
-        return () => subscription.unsubscribe();
-      }, [supabase]);
-
-      useEffect(() => {
-        if (!supabase || !session?.user) return;
-        const userId = session.user.id;
-
-        const initUser = async () => {
-          await fetchAllProfiles();
-          let { data: prof } = await supabase.from('profiles').select('*').eq('id', userId).single();
-          if (!prof) {
-            const defaultName = session.user.user_metadata?.username || session.user.email.split('@')[0];
-            const code = String(Math.floor(1000 + Math.random() * 9000));
-            const { data: created } = await supabase.from('profiles').insert([{
-              id: userId,
-              username: defaultName,
-              friend_code: code,
-              avatar_color: '#5865F2'
-            }]).select().single();
-            prof = created;
-          }
-          setProfile(prof);
-          setEditName(prof?.username || '');
-          setEditColor(prof?.avatar_color || '#5865F2');
-          setEditAvatarUrl(prof?.avatar_url || '');
-          fetchServers();
-          fetchFriendships();
-        };
-
-        initUser();
-
-        // Presence channel
-        const presenceChannel = supabase.channel('online-users', {
-          config: { presence: { key: userId } }
-        });
-        presenceChannel
-          .on('presence', { event: 'sync' }, () => {
-            const state = presenceChannel.presenceState();
-            setOnlineUsers(new Set(Object.keys(state)));
-          })
-          .subscribe(async (status) => {
-            if (status === 'SUBSCRIBED') {
-              await presenceChannel.track({ online_at: new Date().toISOString() });
-            }
+        if (error) return alert("登録エラー: " + error.message);
+        if (data.user) {
+          currentUser = data.user;
+          const code = String(Math.floor(1000 + Math.random() * 9000));
+          await supabaseClient.from("profiles").upsert({
+            id: currentUser.id,
+            username,
+            friend_code: code
           });
-
-        return () => {
-          supabase.removeChannel(presenceChannel);
-        };
-      }, [supabase, session]);
-
-      const fetchAllProfiles = async () => {
-        if (!supabase) return;
-        const { data } = await supabase.from('profiles').select('*');
-        if (data) {
-          const map = {};
-          data.forEach(p => { map[p.id] = p; });
-          setProfilesMap(map);
-          if (session?.user && map[session.user.id]) {
-            setProfile(map[session.user.id]);
-          }
+          await bootstrapApp();
         }
-      };
-
-      const fetchServers = async () => {
-        if (!supabase || !session?.user) return;
-        const { data: memberRows } = await supabase.from('server_members').select('server_id').eq('user_id', session.user.id);
-        if (memberRows && memberRows.length > 0) {
-          const ids = memberRows.map(r => r.server_id);
-          const { data: srvData } = await supabase.from('servers').select('*').in('id', ids);
-          setServers(srvData || []);
-        } else {
-          setServers([]);
-        }
-      };
-
-      const fetchFriendships = async () => {
-        if (!supabase || !session?.user) return;
-        const uid = session.user.id;
-        const { data } = await supabase.from('friendships').select('*').or(`requester_id.eq.${uid},addressee_id.eq.${uid}`);
-        setFriendships(data || []);
-      };
-
-      // Fetch server roles & members when activeServer changes
-      useEffect(() => {
-        if (!supabase || !activeServer) return;
-        fetchServerDetails(activeServer.id);
-      }, [supabase, activeServer]);
-
-      const fetchServerDetails = async (serverId) => {
-        const [{ data: roles }, { data: mRoles }, { data: members }] = await Promise.all([
-          supabase.from('server_roles').select('*').eq('server_id', serverId).order('created_at', { ascending: true }),
-          supabase.from('member_roles').select('*').eq('server_id', serverId),
-          supabase.from('server_members').select('*').eq('server_id', serverId)
-        ]);
-        setServerRoles(roles || []);
-        setMemberRoles(mRoles || []);
-        setServerMembers(members || []);
-      };
-
-      // Messages listener
-      useEffect(() => {
-        if (!supabase || !session?.user) return;
-        if (activeView === 'friends') {
-          setMessages([]);
-          return;
-        }
-
-        const getDmId = (u1, u2) => [u1, u2].sort().join('_');
-        const currentRoomId = activeView === 'server' && activeServer
-          ? `server_${activeServer.id}`
-          : activeView === 'dm' && activeDmUser
-          ? `dm_${getDmId(session.user.id, activeDmUser.id)}`
-          : null;
-
-        if (!currentRoomId) return;
-
-        const loadMessages = async () => {
-          let query = supabase.from('messages').select('*').order('created_at', { ascending: true });
-          if (activeView === 'server' && activeServer) {
-            query = query.eq('server_id', activeServer.id);
-          } else if (activeView === 'dm' && activeDmUser) {
-            query = query.eq('dm_id', getDmId(session.user.id, activeDmUser.id));
-          }
-          const { data } = await query;
-          setMessages(data || []);
-        };
-
-        loadMessages();
-
-        const msgChannel = supabase.channel(`room-${currentRoomId}`)
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload) => {
-            if (payload.eventType === 'INSERT') {
-              const m = payload.new;
-              const isMatch = (activeView === 'server' && m.server_id === activeServer?.id) ||
-                              (activeView === 'dm' && m.dm_id === getDmId(session.user.id, activeDmUser?.id));
-              if (isMatch) {
-                setMessages(prev => prev.some(x => x.id === m.id) ? prev : [...prev, m]);
-                fetchAllProfiles();
-              }
-            } else if (payload.eventType === 'DELETE') {
-              setMessages(prev => prev.filter(x => x.id !== payload.old.id));
-            }
-          })
-          .subscribe();
-
-        return () => {
-          supabase.removeChannel(msgChannel);
-        };
-      }, [supabase, session, activeView, activeServer, activeDmUser]);
-
-      useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-      }, [messages]);
-
-      // Auth handlers
-      const handleAuth = async (e) => {
-        e.preventDefault();
-        setAuthLoading(true);
-        try {
-          if (isSignUp) {
-            const { error } = await supabase.auth.signUp({
-              email,
-              password,
-              options: { data: { username: usernameInput || email.split('@')[0] } }
-            });
-            if (error) throw error;
-          } else {
-            const { error } = await supabase.auth.signInWithPassword({ email, password });
-            if (error) throw error;
-          }
-        } catch (err) {
-          alert(err.message);
-        } finally {
-          setAuthLoading(false);
-        }
-      };
-
-      // Permissions helper for current user in activeServer
-      const getUserPermissions = (userId) => {
-        if (!activeServer) return { canSend: true, canDelete: false, canManageRoles: false, canKick: false, topRole: null };
-        const isOwner = activeServer.owner_id === userId;
-        const userRoleIds = memberRoles.filter(mr => mr.user_id === userId).map(mr => mr.role_id);
-        const userRoles = serverRoles.filter(r => userRoleIds.includes(r.id));
-
-        if (isOwner) {
-          return {
-            canSend: true,
-            canDelete: true,
-            canManageRoles: true,
-            canKick: true,
-            topRole: userRoles[0] || { name: 'サーバー主', color: '#f1c40f' }
-          };
-        }
-
-        const hasRoles = userRoles.length > 0;
-        return {
-          canSend: hasRoles ? userRoles.some(r => r.can_send_messages) : true,
-          canDelete: userRoles.some(r => r.can_delete_messages),
-          canManageRoles: userRoles.some(r => r.can_manage_roles),
-          canKick: userRoles.some(r => r.can_kick_members),
-          topRole: userRoles[0] || null
-        };
-      };
-
-      const myPerms = session?.user ? getUserPermissions(session.user.id) : { canSend: true, canDelete: false, canManageRoles: false, canKick: false };
-
-      // Send Message
-      const handleSendMessage = async (e) => {
-        e.preventDefault();
-        if (!newMessage.trim() || !session?.user) return;
-        if (activeView === 'server' && !myPerms.canSend) {
-          return alert('このサーバーではメッセージ送信権限がありません。');
-        }
-
-        const getDmId = (u1, u2) => [u1, u2].sort().join('_');
-        const payload = {
-          sender_id: session.user.id,
-          content: newMessage.trim(),
-          room_id: activeView === 'server' ? `server_${activeServer.id}` : `dm_${getDmId(session.user.id, activeDmUser.id)}`,
-          server_id: activeView === 'server' ? activeServer.id : null,
-          dm_id: activeView === 'dm' ? getDmId(session.user.id, activeDmUser.id) : null
-        };
-
-        setNewMessage('');
-        const { error } = await supabase.from('messages').insert([payload]);
-        if (error) {
-          alert('送信エラー: ' + error.message);
-        }
-      };
-
-      const handleDeleteMessage = async (msgId) => {
-        if (!confirm('このメッセージを削除しますか？')) return;
-        const { error } = await supabase.from('messages').delete().eq('id', msgId);
-        if (error) alert('削除エラー: ' + error.message);
-        else setMessages(prev => prev.filter(m => m.id !== msgId));
-      };
-
-      // Server Create & Join
-      const handleCreateServer = async (e) => {
-        e.preventDefault();
-        if (!newServerName.trim()) return;
-        const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-        const { data: srv, error } = await supabase.from('servers').insert([{
-          name: newServerName.trim(),
-          invite_code: inviteCode,
-          owner_id: session.user.id
-        }]).select().single();
-
-        if (error) return alert('サーバー作成エラー: ' + error.message);
-
-        await supabase.from('server_members').insert([{
-          server_id: srv.id,
-          user_id: session.user.id
-        }]);
-
-        setNewServerName('');
-        setShowServerModal(false);
-        await fetchServers();
-        setActiveServer(srv);
-        setActiveView('server');
-      };
-
-      const handleJoinServer = async (e) => {
-        e.preventDefault();
-        if (!inviteCodeInput.trim()) return;
-        const { data: srv, error } = await supabase.from('servers').select('*').eq('invite_code', inviteCodeInput.trim().toUpperCase()).single();
-        if (error || !srv) return alert('招待コードが見つかりません');
-
-        const { error: joinErr } = await supabase.from('server_members').insert([{
-          server_id: srv.id,
-          user_id: session.user.id
-        }]);
-        if (joinErr && !joinErr.message.includes('duplicate')) return alert('参加エラー: ' + joinErr.message);
-
-        setInviteCodeInput('');
-        setShowServerModal(false);
-        await fetchServers();
-        setActiveServer(srv);
-        setActiveView('server');
-      };
-
-      // Role Management
-      const handleCreateRole = async (e) => {
-        e.preventDefault();
-        if (!newRoleName.trim() || !activeServer) return;
-        const { error } = await supabase.from('server_roles').insert([{
-          server_id: activeServer.id,
-          name: newRoleName.trim(),
-          color: newRoleColor,
-          can_send_messages: permSend,
-          can_delete_messages: permDelete,
-          can_manage_roles: permManageRoles,
-          can_kick_members: permKick
-        }]);
-        if (error) return alert('ロール作成エラー: ' + error.message);
-        setNewRoleName('');
-        fetchServerDetails(activeServer.id);
-      };
-
-      const handleDeleteRole = async (roleId) => {
-        if (!confirm('このロールを削除しますか？')) return;
-        await supabase.from('server_roles').delete().eq('id', roleId);
-        fetchServerDetails(activeServer.id);
-      };
-
-      const handleToggleMemberRole = async (targetUserId, roleId) => {
-        const exists = memberRoles.some(mr => mr.user_id === targetUserId && mr.role_id === roleId);
-        if (exists) {
-          await supabase.from('member_roles').delete()
-            .eq('server_id', activeServer.id)
-            .eq('user_id', targetUserId)
-            .eq('role_id', roleId);
-        } else {
-          await supabase.from('member_roles').insert([{
-            server_id: activeServer.id,
-            user_id: targetUserId,
-            role_id: roleId
-          }]);
-        }
-        fetchServerDetails(activeServer.id);
-      };
-
-      const handleKickMember = async (targetUserId) => {
-        if (!confirm('このメンバーをサーバーから追放しますか？')) return;
-        await supabase.from('server_members').delete()
-          .eq('server_id', activeServer.id)
-          .eq('user_id', targetUserId);
-        fetchServerDetails(activeServer.id);
-      };
-
-      // Friends
-      const handleSendFriendRequest = async (e) => {
-        e.preventDefault();
-        const parts = friendInput.trim().split('#');
-        if (parts.length !== 2) return alert('「ユーザー名#4桁コード」の形式で入力してください');
-        const [targetName, targetCode] = parts;
-
-        const { data: targetUser } = await supabase.from('profiles')
-          .select('*')
-          .eq('username', targetName)
-          .eq('friend_code', targetCode)
-          .single();
-
-        if (!targetUser) return alert('ユーザーが見つかりません');
-        if (targetUser.id === session.user.id) return alert('自分自身には申請できません');
-
-        const { error } = await supabase.from('friendships').insert([{
-          requester_id: session.user.id,
-          addressee_id: targetUser.id,
-          status: 'pending'
-        }]);
-        if (error) return alert('すでに申請済みかエラーが発生しました');
-        alert('フレンド申請を送信しました！');
-        setFriendInput('');
-        fetchFriendships();
-      };
-
-      const handleAcceptFriend = async (friendshipId) => {
-        await supabase.from('friendships').update({ status: 'accepted' }).eq('id', friendshipId);
-        fetchFriendships();
-      };
-
-      // Profile Update & Image Compression
-      const handleImageUpload = (e) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          const img = new Image();
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const size = 128;
-            canvas.width = size;
-            canvas.height = size;
-            const ctx = canvas.getContext('2d');
-            const minSide = Math.min(img.width, img.height);
-            const sx = (img.width - minSide) / 2;
-            const sy = (img.height - minSide) / 2;
-            ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, size, size);
-            setEditAvatarUrl(canvas.toDataURL('image/jpeg', 0.8));
-          };
-          img.src = event.target.result;
-        };
-        reader.readAsDataURL(file);
-      };
-
-      const handleSaveProfile = async (e) => {
-        e.preventDefault();
-        if (!editName.trim()) return;
-        const { error } = await supabase.from('profiles').update({
-          username: editName.trim(),
-          avatar_color: editColor,
-          avatar_url: editAvatarUrl || null
-        }).eq('id', session.user.id);
-
-        if (error) return alert('保存エラー: ' + error.message);
-        await fetchAllProfiles();
-        setShowProfileModal(false);
-      };
-
-      // 1. Setup Screen
-      if (!supabase || !supabaseKey) {
-        return (
-          <div className="min-h-screen flex items-center justify-center bg-[#1e1f22] p-4">
-            <form onSubmit={handleSaveConfig} className="bg-[#2b2d31] p-6 rounded-xl shadow-2xl w-full max-w-md space-y-4">
-              <div className="text-center">
-                <div className="w-12 h-12 bg-[#5865F2] rounded-2xl mx-auto flex items-center justify-center text-white font-bold text-2xl mb-3">R</div>
-                <h1 className="text-xl font-bold">Raphael 初期セットアップ</h1>
-                <p className="text-xs text-gray-400 mt-1">Supabaseの接続情報を入力してください</p>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-300 mb-1">PROJECT URL</label>
-                <input type="text" value={supabaseUrl} onChange={e => setSupabaseUrl(e.target.value)} className="w-full bg-[#1e1f22] text-white p-2.5 rounded text-sm outline-none focus:ring-2 focus:ring-[#5865F2]" placeholder="https://xxxx.supabase.co" required />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-300 mb-1">ANON PUBLIC KEY</label>
-                <input type="text" value={supabaseKey} onChange={e => setSupabaseKey(e.target.value)} className="w-full bg-[#1e1f22] text-white p-2.5 rounded text-sm outline-none focus:ring-2 focus:ring-[#5865F2]" placeholder="sb_publishable_... または eyJhb..." required />
-              </div>
-              <button type="submit" className="w-full bg-[#5865F2] hover:bg-[#4752c4] text-white font-bold py-2.5 rounded transition">保存して次へ</button>
-            </form>
-          </div>
-        );
+      } else {
+        const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+        if (error) return alert("ログインエラー: " + error.message);
+        currentUser = data.user;
+        await bootstrapApp();
       }
-
-      // 2. Login / Sign Up Screen
-      if (!session) {
-        return (
-          <div className="min-h-screen flex items-center justify-center bg-[#1e1f22] p-4">
-            <form onSubmit={handleAuth} className="bg-[#2b2d31] p-6 rounded-xl shadow-2xl w-full max-w-md space-y-4">
-              <div className="text-center">
-                <div className="w-12 h-12 bg-[#5865F2] rounded-2xl mx-auto flex items-center justify-center text-white font-bold text-2xl mb-3">R</div>
-                <h1 className="text-xl font-bold">{isSignUp ? 'Raphael アカウント作成' : 'Raphael にログイン'}</h1>
-              </div>
-              {isSignUp && (
-                <div>
-                  <label className="block text-xs font-bold text-gray-300 mb-1">ユーザー名</label>
-                  <input type="text" value={usernameInput} onChange={e => setUsernameInput(e.target.value)} className="w-full bg-[#1e1f22] text-white p-2.5 rounded text-sm outline-none focus:ring-2 focus:ring-[#5865F2]" placeholder="表示名を入力" required />
-                </div>
-              )}
-              <div>
-                <label className="block text-xs font-bold text-gray-300 mb-1">メールアドレス</label>
-                <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-[#1e1f22] text-white p-2.5 rounded text-sm outline-none focus:ring-2 focus:ring-[#5865F2]" placeholder="mail@example.com" required />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-300 mb-1">パスワード</label>
-                <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-[#1e1f22] text-white p-2.5 rounded text-sm outline-none focus:ring-2 focus:ring-[#5865F2]" placeholder="6文字以上" required />
-              </div>
-              <button type="submit" disabled={authLoading} className="w-full bg-[#5865F2] hover:bg-[#4752c4] text-white font-bold py-2.5 rounded transition">
-                {authLoading ? '処理中...' : isSignUp ? 'アカウント登録' : 'ログイン'}
-              </button>
-              <div className="text-center">
-                <button type="button" onClick={() => setIsSignUp(!isSignUp)} className="text-xs text-[#00a8fc] hover:underline">
-                  {isSignUp ? 'すでにアカウントをお持ちの方はこちら' : 'アカウント登録はこちら'}
-                </button>
-              </div>
-            </form>
-          </div>
-        );
-      }
-
-      // 3. Main App Layout
-      const acceptedFriends = friendships
-        .filter(f => f.status === 'accepted')
-        .map(f => f.requester_id === session.user.id ? profilesMap[f.addressee_id] : profilesMap[f.requester_id])
-        .filter(Boolean);
-
-      const pendingRequests = friendships.filter(f => f.status === 'pending' && f.addressee_id === session.user.id);
-
-      return (
-        <div className="flex h-screen w-screen overflow-hidden bg-[#313338] relative">
-          {/* Mobile Overlay */}
-          {sidebarOpen && (
-            <div onClick={() => setSidebarOpen(false)} className="fixed inset-0 bg-black/60 z-30 md:hidden"></div>
-          )}
-
-          {/* Left Drawer (Server Rail + Channel/DM List + User Bar) */}
-          <div className={`fixed inset-y-0 left-0 z-40 flex transform transition-transform duration-200 md:relative md:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-            {/* Server Rail */}
-            <div className="w-[68px] bg-[#1e1f22] flex flex-col items-center py-3 space-y-2 overflow-y-auto shrink-0">
-              <button
-                onClick={() => { setActiveView('friends'); setActiveServer(null); setActiveDmUser(null); setSidebarOpen(false); }}
-                className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-lg transition ${activeView === 'friends' || activeView === 'dm' ? 'bg-[#5865F2] text-white' : 'bg-[#313338] text-gray-300 hover:bg-[#5865F2] hover:text-white'}`}
-                title="ホーム / フレンド"
-              >
-                R
-              </button>
-              <div className="w-8 h-[2px] bg-[#35363c] rounded"></div>
-              {servers.map(srv => (
-                <button
-                  key={srv.id}
-                  onClick={() => { setActiveServer(srv); setActiveView('server'); setSidebarOpen(false); }}
-                  className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-sm transition px-1 truncate ${activeView === 'server' && activeServer?.id === srv.id ? 'bg-[#5865F2] text-white' : 'bg-[#313338] text-gray-300 hover:bg-[#5865F2] hover:text-white'}`}
-                  title={srv.name}
-                >
-                  {srv.name.slice(0, 3)}
-                </button>
-              ))}
-              <button
-                onClick={() => setShowServerModal(true)}
-                className="w-12 h-12 rounded-2xl bg-[#313338] text-green-500 hover:bg-green-600 hover:text-white flex items-center justify-center text-2xl font-bold transition"
-                title="サーバー追加・参加"
-              >
-                +
-              </button>
-            </div>
-
-            {/* Channel / DM Sidebar */}
-            <div className="w-60 bg-[#2b2d31] flex flex-col justify-between shrink-0">
-              <div className="flex-1 overflow-y-auto">
-                {activeView === 'server' && activeServer ? (
-                  <div>
-                    <div className="h-12 px-4 border-b border-[#1f2023] flex items-center justify-between font-bold shadow-sm">
-                      <span className="truncate">{activeServer.name}</span>
-                      {(activeServer.owner_id === session.user.id || myPerms.canManageRoles || myPerms.canKick) && (
-                        <button onClick={() => setShowServerSettings(true)} className="text-gray-300 hover:text-white p-1" title="サーバー設定">
-                          ⚙️
-                        </button>
-                      )}
-                    </div>
-                    <div className="p-2 space-y-1">
-                      <div className="px-2 py-1.5 rounded bg-[#3f4147] text-white text-sm font-medium flex items-center gap-2">
-                        <span className="text-gray-400">#</span> 一般チャット
-                      </div>
-                      <div className="mt-4 px-2 text-xs font-bold text-gray-400 uppercase">招待コード</div>
-                      <div className="mx-2 px-2.5 py-1.5 bg-[#1e1f22] rounded text-xs font-mono text-green-400 select-all">
-                        {activeServer.invite_code}
-                      </div>
-                      <div className="mt-4 px-2 text-xs font-bold text-gray-400 uppercase">メンバー ({serverMembers.length})</div>
-                      <div className="space-y-1 mt-1">
-                        {serverMembers.map(m => {
-                          const p = profilesMap[m.user_id];
-                          if (!p) return null;
-                          const perms = getUserPermissions(m.user_id);
-                          return (
-                            <div key={m.user_id} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-[#35373c]">
-                              <Avatar profile={p} size="sm" online={onlineUsers.has(p.id)} />
-                              <div className="min-w-0 flex-1">
-                                <div className="text-sm font-medium truncate" style={{ color: perms.topRole?.color || '#f2f3f5' }}>
-                                  {p.username}
-                                </div>
-                                {perms.topRole && (
-                                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-[#1e1f22]" style={{ color: perms.topRole.color }}>
-                                    {perms.topRole.name}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div>
-                    <div className="h-12 px-4 border-b border-[#1f2023] flex items-center font-bold shadow-sm">
-                      Raphael
-                    </div>
-                    <div className="p-2 space-y-1">
-                      <button
-                        onClick={() => { setActiveView('friends'); setActiveDmUser(null); setSidebarOpen(false); }}
-                        className={`w-full text-left px-3 py-2 rounded text-sm font-medium flex items-center gap-2 ${activeView === 'friends' ? 'bg-[#3f4147] text-white' : 'text-gray-400 hover:bg-[#35373c] hover:text-gray-200'}`}
-                      >
-                        👥 フレンド
-                      </button>
-                      <div className="pt-3 px-2 text-xs font-bold text-gray-400 uppercase">ダイレクトメッセージ</div>
-                      {acceptedFriends.map(friend => (
-                        <button
-                          key={friend.id}
-                          onClick={() => { setActiveDmUser(friend); setActiveView('dm'); setSidebarOpen(false); }}
-                          className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded text-sm ${activeView === 'dm' && activeDmUser?.id === friend.id ? 'bg-[#3f4147] text-white' : 'text-gray-400 hover:bg-[#35373c] hover:text-gray-200'}`}
-                        >
-                          <Avatar profile={friend} size="sm" online={onlineUsers.has(friend.id)} />
-                          <span className="truncate">{friend.username}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Bottom User Profile Bar */}
-              <div className="h-14 bg-[#232428] px-2 flex items-center justify-between">
-                <button
-                  onClick={() => {
-                    setEditName(profile?.username || '');
-                    setEditColor(profile?.avatar_color || '#5865F2');
-                    setEditAvatarUrl(profile?.avatar_url || '');
-                    setShowProfileModal(true);
-                  }}
-                  className="flex items-center gap-2 p-1 rounded hover:bg-[#35373c] min-w-0 flex-1 text-left"
-                >
-                  <Avatar profile={profile} size="sm" online={true} />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-bold text-white truncate">{profile?.username}</div>
-                    <div className="text-[11px] text-gray-400">#{profile?.friend_code}</div>
-                  </div>
-                </button>
-                <button
-                  onClick={() => setShowProfileModal(true)}
-                  className="p-2 text-gray-400 hover:text-white rounded hover:bg-[#35373c]"
-                  title="プロフィール編集"
-                >
-                  ⚙️
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Main Content Area */}
-          <div className="flex-1 flex flex-col min-w-0 bg-[#313338]">
-            {/* Top Header */}
-            <div className="h-12 px-3 border-b border-[#1f2023] flex items-center justify-between shrink-0 shadow-sm">
-              <div className="flex items-center gap-2 min-w-0">
-                <button onClick={() => setSidebarOpen(true)} className="md:hidden p-1.5 text-gray-300 hover:text-white text-xl">
-                  ☰
-                </button>
-                {activeView === 'friends' && <span className="font-bold">👥 フレンド</span>}
-                {activeView === 'server' && activeServer && (
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-gray-400 font-bold">#</span>
-                    <span className="font-bold truncate">{activeServer.name}</span>
-                  </div>
-                )}
-                {activeView === 'dm' && activeDmUser && (
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-gray-400 font-bold">@</span>
-                    <span className="font-bold truncate">{activeDmUser.username}</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2">
-                {activeView === 'server' && activeServer && (activeServer.owner_id === session.user.id || myPerms.canManageRoles || myPerms.canKick) && (
-                  <button
-                    onClick={() => setShowServerSettings(true)}
-                    className="bg-[#2b2d31] hover:bg-[#3f4147] text-xs px-2.5 py-1.5 rounded font-bold flex items-center gap-1"
-                  >
-                    ⚙️ <span className="hidden sm:inline">サーバー設定</span>
-                  </button>
-                )}
-                <button
-                  onClick={() => supabase.auth.signOut()}
-                  className="text-xs text-gray-400 hover:text-red-400 px-2 py-1"
-                >
-                  ログアウト
-                </button>
-              </div>
-            </div>
-
-            {/* Body Content */}
-            {activeView === 'friends' ? (
-              <div className="flex-1 overflow-y-auto p-4 space-y-6">
-                <div className="bg-[#2b2d31] p-4 rounded-lg space-y-3">
-                  <h2 className="font-bold text-sm">フレンドを追加</h2>
-                  <p className="text-xs text-gray-400">
-                    相手の「ユーザー名#4桁コード」を入力して申請します（あなたのID: <span className="text-white font-mono select-all">{profile?.username}#{profile?.friend_code}</span>）
-                  </p>
-                  <form onSubmit={handleSendFriendRequest} className="flex gap-2">
-                    <input
-                      type="text"
-                      value={friendInput}
-                      onChange={e => setFriendInput(e.target.value)}
-                      placeholder="例: ユーザー名#1234"
-                      className="flex-1 bg-[#1e1f22] text-white px-3 py-2 rounded text-sm outline-none focus:ring-2 focus:ring-[#5865F2]"
-                    />
-                    <button type="submit" className="bg-[#5865F2] hover:bg-[#4752c4] px-4 py-2 rounded text-sm font-bold shrink-0">申請</button>
-                  </form>
-                </div>
-
-                {pendingRequests.length > 0 && (
-                  <div className="space-y-2">
-                    <h3 className="text-xs font-bold text-gray-400 uppercase">届いているフレンド申請 ({pendingRequests.length})</h3>
-                    {pendingRequests.map(req => {
-                      const sender = profilesMap[req.requester_id];
-                      return (
-                        <div key={req.id} className="bg-[#2b2d31] p-3 rounded-lg flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <Avatar profile={sender} size="md" />
-                            <div>
-                              <div className="font-bold text-sm">{sender?.username}</div>
-                              <div className="text-xs text-gray-400">#{sender?.friend_code}</div>
-                            </div>
-                          </div>
-                          <button onClick={() => handleAcceptFriend(req.id)} className="bg-green-600 hover:bg-green-700 px-3 py-1.5 rounded text-xs font-bold">承認</button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <h3 className="text-xs font-bold text-gray-400 uppercase">すべてのフレンド ({acceptedFriends.length})</h3>
-                  {acceptedFriends.length === 0 ? (
-                    <p className="text-sm text-gray-400">まだフレンドがいません。</p>
-                  ) : (
-                    acceptedFriends.map(friend => (
-                      <div key={friend.id} className="bg-[#2b2d31] p-3 rounded-lg flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <Avatar profile={friend} size="md" online={onlineUsers.has(friend.id)} />
-                          <div>
-                            <div className="font-bold text-sm">{friend.username}</div>
-                            <div className="text-xs text-gray-400">{onlineUsers.has(friend.id) ? '🟢 オンライン' : '⚫ オフライン'}</div>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => { setActiveDmUser(friend); setActiveView('dm'); }}
-                          className="bg-[#3f4147] hover:bg-[#4e5058] px-3 py-1.5 rounded text-xs font-bold"
-                        >
-                          メッセージ
-                        </button>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            ) : (
-              /* Chat View (Server or DM) */
-              <div className="flex-1 flex flex-col min-h-0">
-                <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                  {messages.length === 0 && (
-                    <div className="text-center text-gray-400 text-sm mt-10">
-                      まだメッセージがありません。最初の挨拶を送ってみましょう！
-                    </div>
-                  )}
-                  {messages.map(msg => {
-                    const sender = profilesMap[msg.sender_id];
-                    const senderPerms = activeView === 'server' ? getUserPermissions(msg.sender_id) : { topRole: null };
-                    const canDel = msg.sender_id === session.user.id || (activeView === 'server' && myPerms.canDelete);
-
-                    return (
-                      <div key={msg.id} className="flex items-start gap-3 group hover:bg-[#2e3035] -mx-2 px-2 py-1 rounded">
-                        <Avatar profile={sender} size="md" online={onlineUsers.has(msg.sender_id)} />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-bold text-sm" style={{ color: senderPerms.topRole?.color || '#f2f3f5' }}>
-                              {sender?.username || '不明なユーザー'}
-                            </span>
-                            {senderPerms.topRole && (
-                              <span
-                                className="text-[10px] font-bold px-1.5 py-0.5 rounded"
-                                style={{ backgroundColor: `${senderPerms.topRole.color}25`, color: senderPerms.topRole.color, border: `1px solid ${senderPerms.topRole.color}50` }}
-                              >
-                                {senderPerms.topRole.name}
-                              </span>
-                            )}
-                            <span className="text-[11px] text-gray-400">
-                              {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                          </div>
-                          <p className="text-sm text-gray-200 break-words whitespace-pre-wrap mt-0.5">{msg.content}</p>
-                        </div>
-                        {canDel && (
-                          <button
-                            onClick={() => handleDeleteMessage(msg.id)}
-                            className="text-xs text-gray-500 hover:text-red-400 px-1.5 py-1"
-                            title="メッセージを削除"
-                          >
-                            🗑️
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                  <div ref={messagesEndRef} />
-                </div>
-
-                {/* Message Input */}
-                <form onSubmit={handleSendMessage} className="p-3 bg-[#313338] shrink-0">
-                  {activeView === 'server' && !myPerms.canSend ? (
-                    <div className="bg-[#2b2d31] text-gray-400 text-sm p-3 rounded-lg text-center">
-                      このサーバーではメッセージ送信権限がありません
-                    </div>
-                  ) : (
-                    <div className="flex gap-2 bg-[#383a40] p-2 rounded-lg">
-                      <input
-                        type="text"
-                        value={newMessage}
-                        onChange={e => setNewMessage(e.target.value)}
-                        placeholder={activeView === 'server' ? `${activeServer?.name} へメッセージを送信` : `@${activeDmUser?.username} へメッセージを送信`}
-                        className="flex-1 bg-transparent text-white text-sm px-2 outline-none"
-                      />
-                      <button type="submit" className="bg-[#5865F2] hover:bg-[#4752c4] text-white text-sm font-bold px-4 py-1.5 rounded transition shrink-0">
-                        送信
-                      </button>
-                    </div>
-                  )}
-                </form>
-              </div>
-            )}
-          </div>
-
-          {/* Modal 1: Create / Join Server */}
-          {showServerModal && (
-            <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-              <div className="bg-[#2b2d31] rounded-xl w-full max-w-md p-5 space-y-4">
-                <div className="flex justify-between items-center">
-                  <h2 className="font-bold text-lg">サーバーの追加・参加</h2>
-                  <button onClick={() => setShowServerModal(false)} className="text-gray-400 hover:text-white text-xl">×</button>
-                </div>
-                <div className="flex gap-2 border-b border-[#1f2023] pb-2">
-                  <button onClick={() => setServerModalTab('create')} className={`flex-1 py-1.5 rounded text-sm font-bold ${serverModalTab === 'create' ? 'bg-[#5865F2] text-white' : 'text-gray-400'}`}>新規作成</button>
-                  <button onClick={() => setServerModalTab('join')} className={`flex-1 py-1.5 rounded text-sm font-bold ${serverModalTab === 'join' ? 'bg-[#5865F2] text-white' : 'text-gray-400'}`}>招待コードで参加</button>
-                </div>
-                {serverModalTab === 'create' ? (
-                  <form onSubmit={handleCreateServer} className="space-y-4">
-                    <div>
-                      <label className="block text-xs font-bold text-gray-300 mb-1">サーバー名</label>
-                      <input type="text" value={newServerName} onChange={e => setNewServerName(e.target.value)} placeholder="例: 2年1組、ゲーム部" className="w-full bg-[#1e1f22] text-white p-2.5 rounded text-sm outline-none" required />
-                    </div>
-                    <button type="submit" className="w-full bg-[#5865F2] hover:bg-[#4752c4] py-2.5 rounded font-bold text-sm">作成する</button>
-                  </form>
-                ) : (
-                  <form onSubmit={handleJoinServer} className="space-y-4">
-                    <div>
-                      <label className="block text-xs font-bold text-gray-300 mb-1">招待コード（6桁）</label>
-                      <input type="text" value={inviteCodeInput} onChange={e => setInviteCodeInput(e.target.value)} placeholder="例: A1B2C3" className="w-full bg-[#1e1f22] text-white p-2.5 rounded text-sm outline-none uppercase" required />
-                    </div>
-                    <button type="submit" className="w-full bg-green-600 hover:bg-green-700 py-2.5 rounded font-bold text-sm">参加する</button>
-                  </form>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Modal 2: Profile Edit */}
-          {showProfileModal && (
-            <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-              <form onSubmit={handleSaveProfile} className="bg-[#2b2d31] rounded-xl w-full max-w-md p-5 space-y-4">
-                <div className="flex justify-between items-center">
-                  <h2 className="font-bold text-lg">プロフィール編集</h2>
-                  <button type="button" onClick={() => setShowProfileModal(false)} className="text-gray-400 hover:text-white text-xl">×</button>
-                </div>
-
-                <div className="flex flex-col items-center gap-3">
-                  <Avatar profile={{ username: editName, avatar_color: editColor, avatar_url: editAvatarUrl }} size="xl" />
-                  <div className="flex gap-2">
-                    <label className="bg-[#5865F2] hover:bg-[#4752c4] px-3 py-1.5 rounded text-xs font-bold cursor-pointer">
-                      画像を選択
-                      <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
-                    </label>
-                    {editAvatarUrl && (
-                      <button type="button" onClick={() => setEditAvatarUrl('')} className="bg-[#3f4147] hover:bg-[#4e5058] px-3 py-1.5 rounded text-xs font-bold">
-                        画像を削除
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-300 mb-1">ユーザー名</label>
-                  <input type="text" value={editName} onChange={e => setEditName(e.target.value)} className="w-full bg-[#1e1f22] text-white p-2.5 rounded text-sm outline-none" required />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-300 mb-1">アイコン背景色（画像未設定時）</label>
-                  <div className="flex items-center gap-2">
-                    {['#5865F2', '#23a55a', '#f0b232', '#da373c', '#eb459e', '#00a8fc'].map(c => (
-                      <button
-                        type="button"
-                        key={c}
-                        onClick={() => setEditColor(c)}
-                        className={`w-8 h-8 rounded-full border-2 ${editColor === c ? 'border-white scale-110' : 'border-transparent'}`}
-                        style={{ backgroundColor: c }}
-                      />
-                    ))}
-                    <input type="color" value={editColor} onChange={e => setEditColor(e.target.value)} className="w-8 h-8 bg-transparent cursor-pointer" />
-                  </div>
-                </div>
-
-                <button type="submit" className="w-full bg-green-600 hover:bg-green-700 py-2.5 rounded font-bold text-sm">変更を保存</button>
-              </form>
-            </div>
-          )}
-
-          {/* Modal 3: Server Settings (Roles & Permissions & Members) */}
-          {showServerSettings && activeServer && (
-            <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-3">
-              <div className="bg-[#2b2d31] rounded-xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
-                <div className="p-4 border-b border-[#1f2023] flex justify-between items-center shrink-0">
-                  <h2 className="font-bold text-base">⚙️ {activeServer.name} の設定</h2>
-                  <button onClick={() => setShowServerSettings(false)} className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
-                </div>
-
-                <div className="flex border-b border-[#1f2023] bg-[#232428] shrink-0">
-                  <button
-                    onClick={() => setSettingsTab('roles')}
-                    className={`flex-1 py-2.5 text-xs font-bold ${settingsTab === 'roles' ? 'text-white border-b-2 border-[#5865F2]' : 'text-gray-400'}`}
-                  >
-                    🛡️ ロール作成・権限
-                  </button>
-                  <button
-                    onClick={() => setSettingsTab('members')}
-                    className={`flex-1 py-2.5 text-xs font-bold ${settingsTab === 'members' ? 'text-white border-b-2 border-[#5865F2]' : 'text-gray-400'}`}
-                  >
-                    👥 メンバー・ロール付与
-                  </button>
-                </div>
-
-                <div className="p-4 overflow-y-auto space-y-5 flex-1">
-                  {settingsTab === 'roles' ? (
-                    <>
-                      {/* Create Role Form */}
-                      {(activeServer.owner_id === session.user.id || myPerms.canManageRoles) && (
-                        <form onSubmit={handleCreateRole} className="bg-[#1e1f22] p-3.5 rounded-lg space-y-3">
-                          <h3 className="text-xs font-bold text-gray-300 uppercase">新しいロールを作成</h3>
-                          <div className="flex gap-2">
-                            <input
-                              type="text"
-                              value={newRoleName}
-                              onChange={e => setNewRoleName(e.target.value)}
-                              placeholder="例: 管理者, モデレーター, VIP"
-                              className="flex-1 bg-[#2b2d31] text-white px-3 py-2 rounded text-sm outline-none"
-                              required
-                            />
-                            <input
-                              type="color"
-                              value={newRoleColor}
-                              onChange={e => setNewRoleColor(e.target.value)}
-                              className="w-10 h-9 rounded bg-transparent cursor-pointer"
-                              title="ロールカラー"
-                            />
-                          </div>
-
-                          <div className="space-y-2 pt-1">
-                            <div className="text-xs font-bold text-gray-400">権限設定</div>
-                            <label className="flex items-center justify-between text-xs bg-[#2b2d31] p-2 rounded cursor-pointer">
-                              <span>💬 メッセージの送信</span>
-                              <input type="checkbox" checked={permSend} onChange={e => setPermSend(e.target.checked)} className="w-4 h-4 accent-[#5865F2]" />
-                            </label>
-                            <label className="flex items-center justify-between text-xs bg-[#2b2d31] p-2 rounded cursor-pointer">
-                              <span>🗑️ 他人のメッセージ削除</span>
-                              <input type="checkbox" checked={permDelete} onChange={e => setPermDelete(e.target.checked)} className="w-4 h-4 accent-[#5865F2]" />
-                            </label>
-                            <label className="flex items-center justify-between text-xs bg-[#2b2d31] p-2 rounded cursor-pointer">
-                              <span>🛡️ ロールの作成・付与</span>
-                              <input type="checkbox" checked={permManageRoles} onChange={e => setPermManageRoles(e.target.checked)} className="w-4 h-4 accent-[#5865F2]" />
-                            </label>
-                            <label className="flex items-center justify-between text-xs bg-[#2b2d31] p-2 rounded cursor-pointer">
-                              <span>👢 メンバーの追放（キック）</span>
-                              <input type="checkbox" checked={permKick} onChange={e => setPermKick(e.target.checked)} className="w-4 h-4 accent-[#5865F2]" />
-                            </label>
-                          </div>
-
-                          <button type="submit" className="w-full bg-[#5865F2] hover:bg-[#4752c4] py-2 rounded text-xs font-bold">
-                            ＋ ロールを作成
-                          </button>
-                        </form>
-                      )}
-
-                      {/* Existing Roles List */}
-                      <div className="space-y-2">
-                        <h3 className="text-xs font-bold text-gray-400 uppercase">作成済みのロール ({serverRoles.length})</h3>
-                        {serverRoles.length === 0 ? (
-                          <p className="text-xs text-gray-400">まだロールがありません。</p>
-                        ) : (
-                          serverRoles.map(role => (
-                            <div key={role.id} className="bg-[#1e1f22] p-3 rounded-lg flex items-center justify-between">
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <span className="w-3 h-3 rounded-full" style={{ backgroundColor: role.color }}></span>
-                                  <span className="font-bold text-sm" style={{ color: role.color }}>{role.name}</span>
-                                </div>
-                                <div className="flex flex-wrap gap-1 mt-1.5">
-                                  {role.can_send_messages && <span className="text-[10px] bg-[#2b2d31] px-1.5 py-0.5 rounded text-gray-300">送信可</span>}
-                                  {!role.can_send_messages && <span className="text-[10px] bg-red-900/40 px-1.5 py-0.5 rounded text-red-300">送信不可</span>}
-                                  {role.can_delete_messages && <span className="text-[10px] bg-[#2b2d31] px-1.5 py-0.5 rounded text-yellow-300">メッセージ削除</span>}
-                                  {role.can_manage_roles && <span className="text-[10px] bg-[#2b2d31] px-1.5 py-0.5 rounded text-blue-300">ロール管理</span>}
-                                  {role.can_kick_members && <span className="text-[10px] bg-[#2b2d31] px-1.5 py-0.5 rounded text-red-300">追放権限</span>}
-                                </div>
-                              </div>
-                              {(activeServer.owner_id === session.user.id || myPerms.canManageRoles) && (
-                                <button onClick={() => handleDeleteRole(role.id)} className="text-xs text-red-400 hover:text-red-300 px-2 py-1">
-                                  削除
-                                </button>
-                              )}
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </>
-                  ) : (
-                    /* Members & Role Assignment Tab */
-                    <div className="space-y-3">
-                      <p className="text-xs text-gray-400">メンバーをタップしてロールの付与・解除ができます。</p>
-                      {serverMembers.map(m => {
-                        const p = profilesMap[m.user_id];
-                        if (!p) return null;
-                        const assignedIds = memberRoles.filter(mr => mr.user_id === m.user_id).map(mr => mr.role_id);
-                        const isServerOwner = activeServer.owner_id === m.user_id;
-
-                        return (
-                          <div key={m.user_id} className="bg-[#1e1f22] p-3 rounded-lg space-y-2.5">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2.5">
-                                <Avatar profile={p} size="sm" online={onlineUsers.has(p.id)} />
-                                <div>
-                                  <div className="font-bold text-sm flex items-center gap-1.5">
-                                    <span>{p.username}</span>
-                                    {isServerOwner && <span className="text-[10px] bg-yellow-600/30 text-yellow-400 px-1.5 py-0.5 rounded">👑 作成者</span>}
-                                  </div>
-                                  <div className="text-[11px] text-gray-400">#{p.friend_code}</div>
-                                </div>
-                              </div>
-
-                              {!isServerOwner && (activeServer.owner_id === session.user.id || myPerms.canKick) && m.user_id !== session.user.id && (
-                                <button
-                                  onClick={() => handleKickMember(m.user_id)}
-                                  className="text-xs bg-red-600/20 text-red-400 hover:bg-red-600 hover:text-white px-2.5 py-1 rounded font-bold transition"
-                                >
-                                  追放
-                                </button>
-                              )}
-                            </div>
-
-                            {/* Role toggles */}
-                            {(activeServer.owner_id === session.user.id || myPerms.canManageRoles) && serverRoles.length > 0 && (
-                              <div className="flex flex-wrap gap-1.5 pt-1 border-t border-[#2b2d31]">
-                                {serverRoles.map(role => {
-                                  const active = assignedIds.includes(role.id);
-                                  return (
-                                    <button
-                                      key={role.id}
-                                      onClick={() => handleToggleMemberRole(m.user_id, role.id)}
-                                      className={`text-xs px-2 py-1 rounded-full font-bold transition flex items-center gap-1 ${active ? 'opacity-100 ring-1 ring-white' : 'opacity-40 hover:opacity-80'}`}
-                                      style={{ backgroundColor: `${role.color}30`, color: role.color }}
-                                    >
-                                      <span>{active ? '✓' : '+'}</span>
-                                      <span>{role.name}</span>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      );
     }
 
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<App />);
+    async function handleLogout() {
+      await supabaseClient.auth.signOut();
+      realtimeChannels.forEach(ch => supabaseClient.removeChannel(ch));
+      realtimeChannels = [];
+      currentUser = null;
+      currentProfile = null;
+      renderAuthScreen(false);
+    }
+
+    async function bootstrapApp() {
+      await ensureProfile();
+      await loadServers();
+      await loadFriends();
+      setupPresenceAndRealtime();
+      renderMain();
+    }
+
+    async function ensureProfile() {
+      const { data } = await supabaseClient.from("profiles").select("*").eq("id", currentUser.id).maybeSingle();
+      if (data) {
+        currentProfile = data;
+      } else {
+        const fallbackName = currentUser.user_metadata?.username || currentUser.email.split("@")[0];
+        const code = String(Math.floor(1000 + Math.random() * 9000));
+        const { data: created } = await supabaseClient.from("profiles").insert({
+          id: currentUser.id,
+          username: fallbackName,
+          friend_code: code
+        }).select().single();
+        currentProfile = created || { id: currentUser.id, username: fallbackName, friend_code: code, avatar_color: "#5865F2" };
+      }
+    }
+
+    async function loadServers() {
+      const { data: memberships } = await supabaseClient
+        .from("server_members")
+        .select("server_id, servers(*)")
+        .eq("user_id", currentUser.id);
+      servers = (memberships || []).map(m => m.servers).filter(Boolean);
+    }
+
+    async function loadFriends() {
+      const { data: rows } = await supabaseClient
+        .from("friendships")
+        .select("*")
+        .or(`requester_id.eq.${currentUser.id},addressee_id.eq.${currentUser.id}`);
+      if (!rows) return;
+      const otherIds = [...new Set(rows.map(r => r.requester_id === currentUser.id ? r.addressee_id : r.requester_id))];
+      let profMap = {};
+      if (otherIds.length > 0) {
+        const { data: profs } = await supabaseClient.from("profiles").select("*").in("id", otherIds);
+        (profs || []).forEach(p => { profMap[p.id] = p; });
+      }
+      friends = [];
+      pendingRequests = [];
+      rows.forEach(r => {
+        const otherId = r.requester_id === currentUser.id ? r.addressee_id : r.requester_id;
+        const prof = profMap[otherId];
+        if (!prof) return;
+        if (r.status === "accepted") {
+          friends.push({ friendshipId: r.id, profile: prof });
+        } else if (r.status === "pending" && r.addressee_id === currentUser.id) {
+          pendingRequests.push({ friendshipId: r.id, profile: prof });
+        }
+      });
+    }
+
+    async function openServer(serverId) {
+      activeServerId = serverId;
+      activeDmUser = null;
+      isSidebarOpen = false;
+      await loadServerDetails(serverId);
+      await loadMessages();
+      renderMain();
+      scrollChatBottom();
+    }
+
+    function openHome() {
+      activeServerId = null;
+      activeDmUser = null;
+      isSidebarOpen = false;
+      renderMain();
+    }
+
+    async function openDm(friendProfile) {
+      activeServerId = null;
+      activeDmUser = friendProfile;
+      isSidebarOpen = false;
+      await loadMessages();
+      renderMain();
+      scrollChatBottom();
+    }
+
+    async function loadServerDetails(serverId) {
+      const { data: memRows } = await supabaseClient
+        .from("server_members")
+        .select("user_id, profiles(*)")
+        .eq("server_id", serverId);
+      serverMembers = (memRows || []).map(m => m.profiles).filter(Boolean);
+
+      const { data: rRows } = await supabaseClient
+        .from("server_roles")
+        .select("*")
+        .eq("server_id", serverId)
+        .order("created_at", { ascending: true });
+      serverRoles = rRows || [];
+
+      const { data: mrRows } = await supabaseClient
+        .from("member_roles")
+        .select("*")
+        .eq("server_id", serverId);
+      memberRoles = mrRows || [];
+    }
+
+    function getDmRoomId(id1, id2) {
+      return [id1, id2].sort().join("_");
+    }
+
+    async function loadMessages() {
+      let query = supabaseClient.from("messages").select("*, profiles(*)").order("created_at", { ascending: true }).limit(100);
+      if (activeServerId) {
+        query = query.eq("server_id", activeServerId);
+      } else if (activeDmUser) {
+        query = query.eq("dm_id", getDmRoomId(currentUser.id, activeDmUser.id));
+      } else {
+        messages = [];
+        return;
+      }
+      const { data } = await query;
+      messages = data || [];
+    }
+
+    function setupPresenceAndRealtime() {
+      realtimeChannels.forEach(ch => supabaseClient.removeChannel(ch));
+      realtimeChannels = [];
+
+      const presenceCh = supabaseClient.channel("raphael-online", {
+        config: { presence: { key: currentUser.id } }
+      });
+      presenceCh
+        .on("presence", { event: "sync" }, () => {
+          const state = presenceCh.presenceState();
+          onlineUserIds = new Set(Object.keys(state));
+          renderMain();
+        })
+        .subscribe(async status => {
+          if (status === "SUBSCRIBED") {
+            await presenceCh.track({ online_at: new Date().toISOString() });
+          }
+        });
+
+      const dbCh = supabaseClient.channel("raphael-db")
+        .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, async () => {
+          if (activeServerId || activeDmUser) {
+            await loadMessages();
+            renderMain();
+            scrollChatBottom();
+          }
+        })
+        .on("postgres_changes", { event: "*", schema: "public", table: "friendships" }, async () => {
+          await loadFriends();
+          renderMain();
+        })
+        .on("postgres_changes", { event: "*", schema: "public", table: "server_roles" }, async () => {
+          if (activeServerId) {
+            await loadServerDetails(activeServerId);
+            renderMain();
+          }
+        })
+        .on("postgres_changes", { event: "*", schema: "public", table: "member_roles" }, async () => {
+          if (activeServerId) {
+            await loadServerDetails(activeServerId);
+            renderMain();
+          }
+        })
+        .subscribe();
+
+      realtimeChannels.push(presenceCh, dbCh);
+    }
+
+    function scrollChatBottom() {
+      setTimeout(() => {
+        const box = document.getElementById("chat-scroll-box");
+        if (box) box.scrollTop = box.scrollHeight;
+      }, 50);
+    }
+
+    async function sendMessage() {
+      const input = document.getElementById("msg-input");
+      if (!input) return;
+      const content = input.value.trim();
+      if (!content) return;
+
+      if (activeServerId) {
+        const perms = getUserPermissions(currentUser.id);
+        if (!perms.canSend) return alert("このサーバーでメッセージを送信する権限がありません");
+      }
+
+      input.value = "";
+      const payload = {
+        sender_id: currentUser.id,
+        content,
+        room_id: activeServerId ? activeServerId : getDmRoomId(currentUser.id, activeDmUser.id),
+        server_id: activeServerId || null,
+        dm_id: activeDmUser ? getDmRoomId(currentUser.id, activeDmUser.id) : null
+      };
+      const { error } = await supabaseClient.from("messages").insert(payload);
+      if (error) {
+        alert("送信エラー: " + error.message);
+      } else {
+        await loadMessages();
+        renderMain();
+        scrollChatBottom();
+      }
+    }
+
+    async function deleteMessage(msgId) {
+      if (!confirm("このメッセージを削除しますか？")) return;
+      const { error } = await supabaseClient.from("messages").delete().eq("id", msgId);
+      if (error) return alert("削除エラー: " + error.message);
+      await loadMessages();
+      renderMain();
+    }
+
+    async function createServer() {
+      const name = document.getElementById("new-server-name").value.trim();
+      if (!name) return alert("サーバー名を入力してください");
+      const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const { data: srv, error } = await supabaseClient
+        .from("servers")
+        .insert({ name, invite_code: inviteCode, owner_id: currentUser.id })
+        .select()
+        .single();
+      if (error) return alert("作成エラー: " + error.message);
+
+      await supabaseClient.from("server_members").insert({
+        server_id: srv.id,
+        user_id: currentUser.id
+      });
+      modalType = null;
+      await loadServers();
+      await openServer(srv.id);
+    }
+
+    async function joinServer() {
+      const code = document.getElementById("join-invite-code").value.trim().toUpperCase();
+      if (!code) return alert("招待コードを入力してください");
+      const { data: srv } = await supabaseClient.from("servers").select("*").eq("invite_code", code).maybeSingle();
+      if (!srv) return alert("招待コードが見つかりません");
+
+      await supabaseClient.from("server_members").upsert({
+        server_id: srv.id,
+        user_id: currentUser.id
+      });
+      modalType = null;
+      await loadServers();
+      await openServer(srv.id);
+    }
+
+    async function sendFriendRequest() {
+      const raw = document.getElementById("friend-tag-input").value.trim();
+      const parts = raw.split("#");
+      if (parts.length !== 2) return alert("「ユーザー名#4桁コード」の形式で入力してください");
+      const [uname, fcode] = parts;
+      const { data: target } = await supabaseClient
+        .from("profiles")
+        .select("*")
+        .eq("username", uname)
+        .eq("friend_code", fcode)
+        .maybeSingle();
+      if (!target) return alert("ユーザーが見つかりませんでした");
+      if (target.id === currentUser.id) return alert("自分自身には申請できません");
+
+      const { error } = await supabaseClient.from("friendships").insert({
+        requester_id: currentUser.id,
+        addressee_id: target.id,
+        status: "pending"
+      });
+      if (error) return alert("申請エラー（すでに申請済みの可能性があります）: " + error.message);
+      alert("フレンド申請を送りました！");
+      document.getElementById("friend-tag-input").value = "";
+      await loadFriends();
+      renderMain();
+    }
+
+    async function acceptFriend(friendshipId) {
+      await supabaseClient.from("friendships").update({ status: "accepted" }).eq("id", friendshipId);
+      await loadFriends();
+      renderMain();
+    }
+
+    let pendingAvatarDataUrl = null;
+    function handleAvatarFileChange(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          const size = 160;
+          canvas.width = size;
+          canvas.height = size;
+          const ctx = canvas.getContext("2d");
+          const minSide = Math.min(img.width, img.height);
+          const sx = (img.width - minSide) / 2;
+          const sy = (img.height - minSide) / 2;
+          ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, size, size);
+          pendingAvatarDataUrl = canvas.toDataURL("image/jpeg", 0.8);
+          const preview = document.getElementById("avatar-preview-img");
+          if (preview) {
+            preview.src = pendingAvatarDataUrl;
+            preview.classList.remove("hidden");
+          }
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    async function saveProfile() {
+      const newName = document.getElementById("edit-username").value.trim();
+      const newColor = document.getElementById("edit-avatar-color").value;
+      if (!newName) return alert("ユーザー名を入力してください");
+      const updates = { username: newName, avatar_color: newColor };
+      if (pendingAvatarDataUrl !== null) {
+        updates.avatar_url = pendingAvatarDataUrl;
+      }
+      const { error } = await supabaseClient.from("profiles").update(updates).eq("id", currentUser.id);
+      if (error) return alert("保存エラー: " + error.message);
+      pendingAvatarDataUrl = null;
+      await ensureProfile();
+      if (activeServerId) await loadServerDetails(activeServerId);
+      modalType = null;
+      renderMain();
+    }
+
+    function clearAvatarImage() {
+      pendingAvatarDataUrl = "";
+      const preview = document.getElementById("avatar-preview-img");
+      if (preview) preview.classList.add("hidden");
+    }
+
+    async function createRole() {
+      const name = document.getElementById("role-name").value.trim();
+      const color = document.getElementById("role-color").value;
+      const canSend = document.getElementById("role-can-send").checked;
+      const canDelete = document.getElementById("role-can-delete").checked;
+      const canManage = document.getElementById("role-can-manage").checked;
+      const canKick = document.getElementById("role-can-kick").checked;
+      if (!name) return alert("ロール名を入力してください");
+
+      const { error } = await supabaseClient.from("server_roles").insert({
+        server_id: activeServerId,
+        name,
+        color,
+        can_send_messages: canSend,
+        can_delete_messages: canDelete,
+        can_manage_roles: canManage,
+        can_kick_members: canKick
+      });
+      if (error) return alert("ロール作成エラー: " + error.message);
+      await loadServerDetails(activeServerId);
+      renderMain();
+    }
+
+    async function deleteRole(roleId) {
+      if (!confirm("このロールを削除しますか？")) return;
+      await supabaseClient.from("server_roles").delete().eq("id", roleId);
+      await loadServerDetails(activeServerId);
+      renderMain();
+    }
+
+    async function toggleMemberRole(userId, roleId, hasRole) {
+      if (hasRole) {
+        await supabaseClient.from("member_roles").delete()
+          .eq("server_id", activeServerId)
+          .eq("user_id", userId)
+          .eq("role_id", roleId);
+      } else {
+        await supabaseClient.from("member_roles").insert({
+          server_id: activeServerId,
+          user_id: userId,
+          role_id: roleId
+        });
+      }
+      await loadServerDetails(activeServerId);
+      renderMain();
+    }
+
+    async function kickMember(userId) {
+      if (!confirm("このメンバーをサーバーから追放しますか？")) return;
+      await supabaseClient.from("server_members").delete()
+        .eq("server_id", activeServerId)
+        .eq("user_id", userId);
+      await loadServerDetails(activeServerId);
+      renderMain();
+    }
+
+    function renderMain() {
+      const activeSrv = servers.find(s => s.id === activeServerId);
+      const perms = activeServerId ? getUserPermissions(currentUser.id) : null;
+
+      let headerTitle = "フレンド";
+      if (activeSrv) headerTitle = `# 一般 (${activeSrv.name})`;
+      else if (activeDmUser) headerTitle = `@ ${activeDmUser.username}`;
+
+      const sidebarHtml = `
+        <div class="flex h-full bg-[#1e1f22] select-none">
+          <!-- サーバーバー -->
+          <div class="w-16 flex flex-col items-center py-3 gap-2.5 bg-[#1e1f22] border-r border-[#2b2d31] shrink-0 scroll-area">
+            <button onclick="openHome()" class="w-11 h-11 rounded-2xl flex items-center justify-center font-bold text-white transition ${!activeServerId ? 'bg-[#5865F2]' : 'bg-[#313338] hover:bg-[#5865F2]'}" title="ホーム">R</button>
+            <div class="w-8 h-[2px] bg-[#35363c] rounded"></div>
+            ${servers.map(s => `
+              <button onclick="openServer('${s.id}')" class="w-11 h-11 rounded-2xl flex items-center justify-center font-bold text-white text-sm transition ${activeServerId === s.id ? 'bg-[#5865F2]' : 'bg-[#313338] hover:bg-[#5865F2]'}" title="${escapeHtml(s.name)}">
+                ${escapeHtml(s.name.slice(0, 2))}
+              </button>
+            `).join("")}
+            <button onclick="modalType='createServer'; renderMain();" class="w-11 h-11 rounded-full bg-[#313338] hover:bg-green-600 text-green-400 hover:text-white flex items-center justify-center text-xl font-bold transition" title="サーバー作成">＋</button>
+            <button onclick="modalType='joinServer'; renderMain();" class="w-11 h-11 rounded-full bg-[#313338] hover:bg-[#5865F2] text-gray-300 hover:text-white flex items-center justify-center text-xs font-bold transition" title="招待で参加">参加</button>
+          </div>
+
+          <!-- チャンネル・DMリスト＆プロフィールバー -->
+          <div class="w-56 flex flex-col bg-[#2b2d31] h-full">
+            <div class="h-12 px-3 flex items-center justify-between border-b border-[#1f2023] font-bold text-sm shrink-0">
+              <span class="truncate">${activeSrv ? escapeHtml(activeSrv.name) : "Raphael ダイレクト"}</span>
+              ${activeSrv && perms?.canManageRoles ? `
+                <button onclick="modalType='serverSettings'; settingsTab='roles'; isSidebarOpen=false; renderMain();" class="p-1.5 rounded hover:bg-[#35373c] text-gray-300" title="サーバー設定・ロール">⚙️</button>
+              ` : ""}
+            </div>
+
+            <div class="flex-1 p-2 scroll-area space-y-1">
+              ${activeSrv ? `
+                <div class="text-xs font-bold text-gray-400 px-2 py-1">テキストチャンネル</div>
+                <div class="px-2 py-1.5 rounded bg-[#404249] text-white text-sm font-medium"># 一般</div>
+                <div class="mt-4 px-2 py-2 rounded bg-[#1e1f22] text-xs text-gray-300">
+                  <div class="text-gray-400 mb-0.5">招待コード（タップでコピー）</div>
+                  <button onclick="navigator.clipboard?.writeText('${activeSrv.invite_code}'); alert('招待コード ${activeSrv.invite_code} をコピーしました！')" class="font-mono font-bold text-[#00a8fc] text-sm">${activeSrv.invite_code}</button>
+                </div>
+                <div class="text-xs font-bold text-gray-400 px-2 pt-4 pb-1">メンバー — ${serverMembers.length}</div>
+                ${serverMembers.map(m => {
+                  const topRole = getUserTopRole(m.id);
+                  return `
+                    <div class="flex items-center gap-2 px-2 py-1 rounded hover:bg-[#35373c]">
+                      ${getAvatarHtml(m, "w-7 h-7 text-xs", true)}
+                      <div class="min-w-0 flex-1">
+                        <div class="text-xs font-semibold truncate" style="color:${topRole ? escapeHtml(topRole.color) : '#f2f3f5'}">${escapeHtml(m.username)}</div>
+                        ${topRole ? `<div class="text-[10px] text-gray-400 truncate">${escapeHtml(topRole.name)}</div>` : ""}
+                      </div>
+                    </div>
+                  `;
+                }).join("")}
+              ` : `
+                <button onclick="openHome()" class="w-full text-left px-2.5 py-2 rounded text-sm font-medium ${!activeDmUser ? 'bg-[#404249] text-white' : 'text-gray-300 hover:bg-[#35373c]'}">👥 フレンド一覧</button>
+                <div class="text-xs font-bold text-gray-400 px-2 pt-3 pb-1">ダイレクトメッセージ</div>
+                ${friends.map(f => `
+                  <button onclick='openDm(${JSON.stringify(f.profile).replace(/'/g, "&#39;")})' class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm ${activeDmUser?.id === f.profile.id ? 'bg-[#404249] text-white' : 'text-gray-300 hover:bg-[#35373c]'}">
+                    ${getAvatarHtml(f.profile, "w-7 h-7 text-xs", true)}
+                    <span class="truncate">${escapeHtml(f.profile.username)}</span>
+                  </button>
+                `).join("")}
+              `}
+            </div>
+
+            <!-- 左下プロフィールバー -->
+            <div class="h-14 px-2.5 bg-[#232428] flex items-center justify-between shrink-0 border-t border-[#1e1f22]">
+              <button onclick="pendingAvatarDataUrl=null; modalType='profile'; isSidebarOpen=false; renderMain();" class="flex items-center gap-2 min-w-0 flex-1 text-left hover:bg-[#35373c] p-1 rounded">
+                ${getAvatarHtml(currentProfile, "w-8 h-8 text-xs", true)}
+                <div class="min-w-0 flex-1">
+                  <div class="text-xs font-bold text-white truncate">${escapeHtml(currentProfile?.username || "")}</div>
+                  <div class="text-[10px] text-gray-400 truncate">#${escapeHtml(currentProfile?.friend_code || "0000")}</div>
+                </div>
+              </button>
+              <button onclick="pendingAvatarDataUrl=null; modalType='profile'; isSidebarOpen=false; renderMain();" class="p-1.5 text-gray-300 hover:text-white" title="プロフィール編集">⚙️</button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      let mainContentHtml = "";
+      if (!activeServerId && !activeDmUser) {
+        // フレンド管理画面
+        mainContentHtml = `
+          <div class="flex-1 p-4 scroll-area space-y-5">
+            <div class="bg-[#2b2d31] p-4 rounded-xl">
+              <h2 class="text-sm font-bold mb-1">フレンドを追加</h2>
+              <p class="text-xs text-gray-400 mb-3">
+                相手の「ユーザー名#4桁コード」を入力してください<br/>
+                あなたのID: <span class="text-white font-mono font-bold">${escapeHtml(currentProfile?.username)}#${escapeHtml(currentProfile?.friend_code)}</span>
+              </p>
+              <div class="flex gap-2">
+                <input id="friend-tag-input" type="text" placeholder="例: ゆーざー#1234" class="flex-1 min-w-0 p-2 rounded bg-[#1e1f22] text-sm text-white outline-none" />
+                <button onclick="sendFriendRequest()" class="px-4 py-2 rounded bg-[#5865F2] hover:bg-[#4752c4] text-white text-xs font-bold shrink-0">申請送信</button>
+              </div>
+            </div>
+
+            ${pendingRequests.length > 0 ? `
+              <div class="bg-[#2b2d31] p-4 rounded-xl">
+                <h3 class="text-xs font-bold text-gray-300 mb-2">届いているフレンド申請 — ${pendingRequests.length}</h3>
+                <div class="space-y-2">
+                  ${pendingRequests.map(req => `
+                    <div class="flex items-center justify-between bg-[#1e1f22] p-2.5 rounded-lg">
+                      <div class="flex items-center gap-2.5">
+                        ${getAvatarHtml(req.profile, "w-8 h-8 text-xs", true)}
+                        <span class="text-sm font-semibold">${escapeHtml(req.profile.username)}</span>
+                      </div>
+                      <button onclick="acceptFriend('${req.friendshipId}')" class="px-3 py-1 rounded bg-green-600 hover:bg-green-500 text-white text-xs font-bold">承認</button>
+                    </div>
+                  `).join("")}
+                </div>
+              </div>
+            ` : ""}
+
+            <div class="bg-[#2b2d31] p-4 rounded-xl">
+              <h3 class="text-xs font-bold text-gray-300 mb-2">フレンド一覧 — ${friends.length}</h3>
+              ${friends.length === 0 ? `<p class="text-xs text-gray-400">まだフレンドがいません。</p>` : `
+                <div class="space-y-2">
+                  ${friends.map(f => `
+                    <div class="flex items-center justify-between bg-[#1e1f22] p-2.5 rounded-lg">
+                      <div class="flex items-center gap-2.5 min-w-0">
+                        ${getAvatarHtml(f.profile, "w-9 h-9 text-sm", true)}
+                        <div class="min-w-0">
+                          <div class="text-sm font-bold truncate">${escapeHtml(f.profile.username)}</div>
+                          <div class="text-[11px] text-gray-400">${onlineUserIds.has(f.profile.id) ? "🟢 オンライン" : "⚫ オフライン"}</div>
+                        </div>
+                      </div>
+                      <button onclick='openDm(${JSON.stringify(f.profile).replace(/'/g, "&#39;")})' class="px-3 py-1.5 rounded bg-[#313338] hover:bg-[#5865F2] text-xs font-bold shrink-0">DMを送る</button>
+                    </div>
+                  `).join("")}
+                </div>
+              `}
+            </div>
+          </div>
+        `;
+      } else {
+        // チャット画面（スクロール修正済み）
+        const canSendNow = activeServerId ? (perms?.canSend ?? true) : true;
+        mainContentHtml = `
+          <div id="chat-scroll-box" class="flex-1 min-h-0 p-4 scroll-area space-y-3">
+            ${messages.length === 0 ? `<div class="text-center text-xs text-gray-400 py-8">まだメッセージがありません。最初のメッセージを送ってみましょう！</div>` : ""}
+            ${messages.map(m => {
+              const sender = m.profiles || { id: m.sender_id, username: "不明なユーザー", avatar_color: "#5865F2" };
+              const topRole = getUserTopRole(m.sender_id);
+              const canDel = m.sender_id === currentUser.id || (activeServerId && perms?.canDelete);
+              const timeStr = new Date(m.created_at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+              return `
+                <div class="flex items-start gap-3 group">
+                  ${getAvatarHtml(sender, "w-9 h-9 text-sm", false)}
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <span class="text-sm font-bold" style="color:${topRole ? escapeHtml(topRole.color) : '#f2f3f5'}">${escapeHtml(sender.username)}</span>
+                      ${topRole ? `<span class="text-[10px] px-1.5 py-0.5 rounded font-bold text-white" style="background:${escapeHtml(topRole.color)}">${escapeHtml(topRole.name)}</span>` : ""}
+                      <span class="text-[10px] text-gray-400">${timeStr}</span>
+                      ${canDel ? `<button onclick="deleteMessage('${m.id}')" class="text-[11px] text-gray-500 hover:text-red-400 ml-auto">🗑️</button>` : ""}
+                    </div>
+                    <div class="text-sm text-gray-200 break-words whitespace-pre-wrap mt-0.5">${escapeHtml(m.content)}</div>
+                  </div>
+                </div>
+              `;
+            }).join("")}
+          </div>
+
+          <div class="p-3 bg-[#313338] border-t border-[#26282c] shrink-0">
+            ${canSendNow ? `
+              <form onsubmit="event.preventDefault(); sendMessage();" class="flex gap-2">
+                <input id="msg-input" type="text" placeholder="メッセージを送信..." autocomplete="off" class="flex-1 min-w-0 px-3.5 py-2.5 rounded-lg bg-[#383a40] text-white text-sm outline-none" />
+                <button type="submit" class="px-4 py-2.5 rounded-lg bg-[#5865F2] hover:bg-[#4752c4] text-white text-sm font-bold shrink-0">送信</button>
+              </form>
+            ` : `
+              <div class="text-center text-xs text-gray-400 py-2 bg-[#2b2d31] rounded-lg">このサーバーではメッセージの送信権限がありません</div>
+            `}
+          </div>
+        `;
+      }
+
+      document.getElementById("app").innerHTML = `
+        <div class="relative w-full h-full flex overflow-hidden">
+          <!-- PC表示用常設サイドバー -->
+          <div class="hidden md:flex h-full shrink-0">${sidebarHtml}</div>
+
+          <!-- スマホ用スライドサイドバー -->
+          ${isSidebarOpen ? `
+            <div class="fixed inset-0 z-40 flex md:hidden">
+              <div class="h-full z-50 shadow-2xl">${sidebarHtml}</div>
+              <div onclick="isSidebarOpen=false; renderMain();" class="flex-1 bg-black/60"></div>
+            </div>
+          ` : ""}
+
+          <!-- 右側メイン画面 -->
+          <div class="flex-1 min-w-0 h-full flex flex-col bg-[#313338]">
+            <div class="h-12 px-3 border-b border-[#1f2023] flex items-center justify-between shrink-0">
+              <div class="flex items-center gap-2 min-w-0">
+                <button onclick="isSidebarOpen=true; renderMain();" class="md:hidden p-1.5 rounded hover:bg-[#35373c] text-gray-200 text-lg leading-none">☰</button>
+                <span class="font-bold text-sm truncate">${escapeHtml(headerTitle)}</span>
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                ${activeSrv && perms?.canManageRoles ? `
+                  <button onclick="modalType='serverSettings'; settingsTab='roles'; renderMain();" class="px-2.5 py-1 rounded bg-[#2b2d31] hover:bg-[#35373c] text-xs font-bold text-gray-200">⚙️ ロール設定</button>
+                ` : ""}
+                <button onclick="handleLogout()" class="px-2.5 py-1 rounded bg-[#2b2d31] hover:bg-red-600 text-xs text-gray-300 hover:text-white">ログアウト</button>
+              </div>
+            </div>
+
+            ${mainContentHtml}
+          </div>
+        </div>
+        ${renderModal()}
+      `;
+    }
+
+    function renderModal() {
+      if (!modalType) return "";
+      if (modalType === "createServer") {
+        return `
+          <div class="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+            <div class="w-full max-w-sm bg-[#2b2d31] p-5 rounded-xl">
+              <h2 class="text-base font-bold mb-3">新しいサーバーを作成</h2>
+              <input id="new-server-name" type="text" placeholder="サーバー名（例: 雑談部屋）" class="w-full p-2.5 rounded bg-[#1e1f22] text-white text-sm mb-4 outline-none" />
+              <div class="flex justify-end gap-2">
+                <button onclick="modalType=null; renderMain();" class="px-4 py-2 rounded text-xs text-gray-300">キャンセル</button>
+                <button onclick="createServer()" class="px-4 py-2 rounded bg-[#5865F2] text-white text-xs font-bold">作成する</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+      if (modalType === "joinServer") {
+        return `
+          <div class="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+            <div class="w-full max-w-sm bg-[#2b2d31] p-5 rounded-xl">
+              <h2 class="text-base font-bold mb-3">招待コードで参加</h2>
+              <input id="join-invite-code" type="text" placeholder="6桁の招待コード" class="w-full p-2.5 rounded bg-[#1e1f22] text-white text-sm mb-4 outline-none uppercase" />
+              <div class="flex justify-end gap-2">
+                <button onclick="modalType=null; renderMain();" class="px-4 py-2 rounded text-xs text-gray-300">キャンセル</button>
+                <button onclick="joinServer()" class="px-4 py-2 rounded bg-[#5865F2] text-white text-xs font-bold">参加する</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+      if (modalType === "profile") {
+        const previewUrl = pendingAvatarDataUrl !== null ? pendingAvatarDataUrl : (currentProfile?.avatar_url || "");
+        return `
+          <div class="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+            <div class="w-full max-w-sm bg-[#2b2d31] p-5 rounded-xl max-h-[90dvh] scroll-area">
+              <h2 class="text-base font-bold mb-4">プロフィール編集</h2>
+
+              <div class="flex items-center gap-3 mb-4">
+                <img id="avatar-preview-img" src="${escapeHtml(previewUrl)}" class="w-16 h-16 rounded-full object-cover bg-[#1e1f22] ${previewUrl ? '' : 'hidden'}" />
+                <div class="space-y-1.5">
+                  <label class="inline-block px-3 py-1.5 rounded bg-[#5865F2] text-white text-xs font-bold cursor-pointer">
+                    画像を選択
+                    <input type="file" accept="image/*" onchange="handleAvatarFileChange(event)" class="hidden" />
+                  </label>
+                  <button type="button" onclick="clearAvatarImage()" class="block text-[11px] text-gray-400 hover:text-red-400">画像を解除（単色に戻す）</button>
+                </div>
+              </div>
+
+              <label class="block text-xs font-bold text-gray-300 mb-1">ユーザー名</label>
+              <input id="edit-username" type="text" value="${escapeHtml(currentProfile?.username || "")}" class="w-full p-2.5 rounded bg-[#1e1f22] text-white text-sm mb-3 outline-none" />
+
+              <label class="block text-xs font-bold text-gray-300 mb-1">アイコン背景カラー（画像未設定時）</label>
+              <input id="edit-avatar-color" type="color" value="${escapeHtml(currentProfile?.avatar_color || "#5865F2")}" class="w-full h-9 rounded bg-[#1e1f22] mb-4 cursor-pointer" />
+
+              <div class="flex justify-end gap-2">
+                <button onclick="modalType=null; renderMain();" class="px-4 py-2 rounded text-xs text-gray-300">キャンセル</button>
+                <button onclick="saveProfile()" class="px-4 py-2 rounded bg-green-600 text-white text-xs font-bold">保存する</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+      if (modalType === "serverSettings") {
+        const srv = servers.find(s => s.id === activeServerId);
+        const perms = getUserPermissions(currentUser.id);
+        return `
+          <div class="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+            <div class="w-full max-w-md bg-[#2b2d31] p-5 rounded-xl max-h-[90dvh] flex flex-col">
+              <div class="flex items-center justify-between mb-3 shrink-0">
+                <h2 class="text-base font-bold">⚙️ サーバー設定 (${escapeHtml(srv?.name || "")})</h2>
+                <button onclick="modalType=null; renderMain();" class="text-gray-400 hover:text-white text-lg">✕</button>
+              </div>
+
+              <div class="flex gap-2 mb-4 border-b border-[#1e1f22] pb-2 shrink-0">
+                <button onclick="settingsTab='roles'; renderMain();" class="px-3 py-1.5 rounded text-xs font-bold ${settingsTab === 'roles' ? 'bg-[#5865F2] text-white' : 'bg-[#1e1f22] text-gray-300'}">ロール作成・一覧</button>
+                <button onclick="settingsTab='members'; renderMain();" class="px-3 py-1.5 rounded text-xs font-bold ${settingsTab === 'members' ? 'bg-[#5865F2] text-white' : 'bg-[#1e1f22] text-gray-300'}">メンバー・付与</button>
+              </div>
+
+              <div class="flex-1 min-h-0 scroll-area space-y-4">
+                ${settingsTab === "roles" ? `
+                  <div class="bg-[#1e1f22] p-3.5 rounded-lg space-y-2.5">
+                    <div class="text-xs font-bold text-gray-300">新しいロールを作成</div>
+                    <div class="flex gap-2">
+                      <input id="role-name" type="text" placeholder="ロール名（例: 管理者）" class="flex-1 min-w-0 p-2 rounded bg-[#2b2d31] text-white text-xs outline-none" />
+                      <input id="role-color" type="color" value="#e91e63" class="w-10 h-8 rounded bg-[#2b2d31] cursor-pointer" />
+                    </div>
+                    <label class="flex items-center gap-2 text-xs text-gray-200"><input id="role-can-send" type="checkbox" checked /> メッセージの送信を許可</label>
+                    <label class="flex items-center gap-2 text-xs text-gray-200"><input id="role-can-delete" type="checkbox" /> 他人のメッセージ削除を許可</label>
+                    <label class="flex items-center gap-2 text-xs text-gray-200"><input id="role-can-manage" type="checkbox" /> ロールの作成・管理を許可</label>
+                    <label class="flex items-center gap-2 text-xs text-gray-200"><input id="role-can-kick" type="checkbox" /> メンバーの追放を許可</label>
+                    <button onclick="createRole()" class="w-full py-2 rounded bg-[#5865F2] text-white text-xs font-bold">ロールを追加</button>
+                  </div>
+
+                  <div class="space-y-2">
+                    <div class="text-xs font-bold text-gray-400">作成済みロール — ${serverRoles.length}</div>
+                    ${serverRoles.length === 0 ? `<p class="text-xs text-gray-400">まだロールがありません。</p>` : ""}
+                    ${serverRoles.map(r => `
+                      <div class="flex items-center justify-between bg-[#1e1f22] p-2.5 rounded-lg">
+                        <div>
+                          <div class="text-xs font-bold" style="color:${escapeHtml(r.color)}">● ${escapeHtml(r.name)}</div>
+                          <div class="text-[10px] text-gray-400 mt-0.5">
+                            ${r.can_send_messages ? "送信OK " : "送信不可 "}
+                            ${r.can_delete_messages ? "/ 削除OK " : ""}
+                            ${r.can_manage_roles ? "/ ロール管理OK " : ""}
+                            ${r.can_kick_members ? "/ 追放OK" : ""}
+                          </div>
+                        </div>
+                        <button onclick="deleteRole('${r.id}')" class="text-xs text-red-400 hover:underline">削除</button>
+                      </div>
+                    `).join("")}
+                  </div>
+                ` : `
+                  <div class="space-y-2.5">
+                    ${serverMembers.map(m => {
+                      const assignedIds = memberRoles.filter(mr => mr.user_id === m.id).map(mr => mr.role_id);
+                      return `
+                        <div class="bg-[#1e1f22] p-3 rounded-lg">
+                          <div class="flex items-center justify-between mb-2">
+                            <div class="flex items-center gap-2">
+                              ${getAvatarHtml(m, "w-7 h-7 text-xs", true)}
+                              <span class="text-xs font-bold">${escapeHtml(m.username)} ${m.id === srv?.owner_id ? "👑" : ""}</span>
+                            </div>
+                            ${perms.canKick && m.id !== srv?.owner_id && m.id !== currentUser.id ? `
+                              <button onclick="kickMember('${m.id}')" class="text-[11px] text-red-400 hover:underline">追放</button>
+                            ` : ""}
+                          </div>
+                          <div class="flex flex-wrap gap-1.5">
+                            ${serverRoles.length === 0 ? `<span class="text-[11px] text-gray-400">先に「ロール作成」タブでロールを作ってください</span>` : ""}
+                            ${serverRoles.map(r => {
+                              const has = assignedIds.includes(r.id);
+                              return `
+                                <button onclick="toggleMemberRole('${m.id}', '${r.id}', ${has})" class="px-2 py-1 rounded text-[11px] font-bold border transition ${has ? 'text-white' : 'text-gray-400 bg-transparent border-gray-600'}" style="${has ? `background:${escapeHtml(r.color)}; border-color:${escapeHtml(r.color)};` : ''}">
+                                  ${has ? "✓ " : "+ "}${escapeHtml(r.name)}
+                                </button>
+                              `;
+                            }).join("")}
+                          </div>
+                        </div>
+                      `;
+                    }).join("")}
+                  </div>
+                `}
+              </div>
+            </div>
+          </div>
+        `;
+      }
+      return "";
+    }
+
+    init();
   </script>
 </body>
 </html>
