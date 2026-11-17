@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title id="page-title">Web基礎学習ドリル｜英単語・計算演習</title>
+  <style>
+    /* =========================================
+       表向きの学習サイト用デザイン
+       ========================================= */
+    #study-cover {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: #f4f7f6;
+      z-index: 99999;
+      font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", sans-serif;
+      color: #333;
+      overflow-y: auto;
+    }
+    .study-header {
+      background-color: #2e7d32;
+      color: white;
+      padding: 15px 30px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .study-header h1 {
+      margin: 0;
+      font-size: 18px;
+    }
+    .study-container {
+      max-width: 700px;
+      margin: 40px auto;
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    }
+    .badge {
+      background: #e8f5e9;
+      color: #2e7d32;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+    .question-box {
+      margin: 20px 0;
+      padding: 20px;
+      background: #fafafa;
+      border-left: 4px solid #2e7d32;
+    }
+    .question-text {
+      font-size: 24px;
+      font-weight: bold;
+      margin: 10px 0;
+    }
+    .answer-area {
+      display: flex;
+      gap: 10px;
+      margin-top: 15px;
+    }
+    .answer-area input {
+      flex: 1;
+      padding: 12px;
+      font-size: 16px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+    .answer-area button {
+      padding: 12px 24px;
+      font-size: 16px;
+      background-color: #2e7d32;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .answer-area button:hover {
+      background-color: #1b5e20;
+    }
+    #feedback-msg {
+      margin-top: 12px;
+      font-weight: bold;
+      min-height: 24px;
+    }
+    .next-btn {
+      margin-top: 10px;
+      padding: 8px 16px;
+      background: #eee;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    /* =========================================
+       裏コード用コマンド入力エリア
+       ========================================= */
+    .command-box {
+      max-width: 700px;
+      margin: 20px auto;
+      background: #ffffff;
+      padding: 15px 25px;
+      border-radius: 8px;
+      border: 1px solid #e0e0e0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .command-label {
+      font-size: 13px;
+      color: #666;
+      white-space: nowrap;
+    }
+    .command-input {
+      flex: 1;
+      padding: 8px 12px;
+      font-family: monospace;
+      font-size: 14px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      background: #f9f9f9;
+    }
+    .command-btn {
+      padding: 8px 16px;
+      font-size: 13px;
+      background: #555;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .command-btn:hover {
+      background: #333;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ▼▼▼ ここから表向きの学習サイト ▼▼▼ -->
+  <div id="study-cover">
+    <header class="study-header">
+      <h1>📚 Web基礎学習ドリル（英単語・計算演習）</h1>
+      <span>学習モード：標準</span>
+    </header>
+
+    <!-- 通常の学習問題エリア -->
+    <div class="study-container">
+      <span class="badge" id="q-category">英語・基礎単語</span>
+      <h2 style="margin-top: 10px;">次の問いに答えなさい</h2>
+      
+      <div class="question-box">
+        <div id="q-sub">日本語の意味を入力してください</div>
+        <div class="question-text" id="q-main">environment</div>
+      </div>
+
+      <div class="answer-area">
+        <input type="text" id="user-answer" placeholder="ここに解答を入力..." autocomplete="off">
+        <button onclick="submitAnswer()">解答する</button>
+      </div>
+
+      <div id="feedback-msg"></div>
+      <button class="next-btn" onclick="nextQuestion()">次の問題へ ➔</button>
+    </div>
+
+    <!-- ★コマンド入力専用エリア（教材コード・コマンド入力欄）★ -->
+    <div class="command-box">
+      <span class="command-label">教材コマンド / 問題ID指定：</span>
+      <input type="text" id="secret-cmd-input" class="command-input" placeholder="例: ENG-01" autocomplete="off">
+      <button class="command-btn" onclick="runCommand()">実行</button>
+    </div>
+  </div>
+  <!-- ▲▲▲ ここまで表向きの学習サイト ▲▲▲ -->
+
+
+  <!-- ▼▼▼ ここから下に元の「Raphael」のコードをすべて貼り付けてください ▼▼▼ -->
+  <div id="raphael-app">
+    <!-- 元のRaphaelのHTMLコードをここに貼り付け -->
+    <h2>ここに元のRaphaelのコードを貼り付けてください</h2>
+  </div>
+  <!-- ▲▲▲ ここまで元のコード ▲▲▲ -->
+
+
+  <script>
+    // ==========================================
+    // 裏コマンド設定（大文字・小文字を区別）
+    // ==========================================
+    const SECRET_COMMAND = "DZR";
+
+    // ダミーの学習問題リスト
+    const questions = [
+      { cat: "英語・基礎単語", sub: "日本語の意味を入力してください", q: "environment", a: ["環境"] },
+      { cat: "数学・計算", sub: "x の値を求めなさい", q: "3x + 7 = 22", a: ["5", "x=5"] },
+      { cat: "英語・基礎単語", sub: "日本語の意味を入力してください", q: "opportunity", a: ["機会", "チャンス"] },
+      { cat: "理科・基礎", sub: "元素記号を答えなさい", q: "酸素", a: ["O", "o", "O2"] }
+    ];
+    let currentQ = 0;
+
+    // 通常の解答ボタン処理
+    function submitAnswer() {
+      const val = document.getElementById('user-answer').value.trim();
+      const feedback = document.getElementById('feedback-msg');
+
+      if (questions[currentQ].a.includes(val)) {
+        feedback.style.color = "#2e7d32";
+        feedback.textContent = "⭕ 正解です！よくできました。";
+      } else {
+        feedback.style.color = "#d32f2f";
+        feedback.textContent = "❌ 不正解です。もう一度考えてみましょう。";
+      }
+    }
+
+    document.getElementById('user-answer').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') submitAnswer();
+    });
+
+    // ★コマンド入力欄の実行処理★
+    function runCommand() {
+      const cmdInput = document.getElementById('secret-cmd-input');
+      const cmdVal = cmdInput.value.trim();
+
+      if (cmdVal === SECRET_COMMAND) {
+        // コマンド「DZR」が一致したら裏サイト（Raphael）を表示
+        document.getElementById('study-cover').style.display = 'none';
+        cmdInput.value = "";
+        document.title = "Raphael";
+      } else {
+        alert("指定された教材コマンド「" + cmdVal + "」は見つかりませんでした。");
+        cmdInput.value = "";
+      }
+    }
+
+    // コマンド欄でEnterキーを押したときも実行
+    document.getElementById('secret-cmd-input').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') runCommand();
+    });
+
+    // 次の問題へ切り替え
+    function nextQuestion() {
+      currentQ = (currentQ + 1) % questions.length;
+      document.getElementById('q-category').textContent = questions[currentQ].cat;
+      document.getElementById('q-sub').textContent = questions[currentQ].sub;
+      document.getElementById('q-main').textContent = questions[currentQ].q;
+      document.getElementById('user-answer').value = "";
+      document.getElementById('feedback-msg').textContent = "";
+    }
+
+    // 緊急回避用：Escキーを素早く2回押すと学習サイトに戻る
+    let lastEscTime = 0;
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        const now = Date.now();
+        if (now - lastEscTime < 500) {
+          document.getElementById('study-cover').style.display = 'block';
+          document.title = "Web基礎学習ドリル｜英単語・計算演習";
+        }
+        lastEscTime = now;
+      }
+    });
+  </script>
+</body>
+</html>
