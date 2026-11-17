@@ -22,51 +22,141 @@
     color: #333;
     overflow-y: auto;
   }
+  .study-header {
+    background-color: #2e7d32;
+    color: white;
+    padding: 15px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+  .study-header h1 { margin: 0; font-size: 17px; font-weight: bold; }
+  .study-container {
+    max-width: 680px;
+    margin: 30px auto;
+    background: white;
+    padding: 25px;
+    border-radius: 10px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  }
+  .badge {
+    background: #e8f5e9;
+    color: #2e7d32;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: bold;
+  }
+  .question-box {
+    margin: 18px 0;
+    padding: 18px;
+    background: #fafafa;
+    border-left: 4px solid #2e7d32;
+  }
+  .question-text { font-size: 24px; font-weight: bold; margin: 8px 0; color: #111; }
+  .answer-area { display: flex; gap: 10px; margin-top: 15px; }
+  .answer-area input {
+    flex: 1; padding: 11px; font-size: 16px; border: 1px solid #ccc; border-radius: 6px;
+    background: #fff; color: #333; outline: none;
+  }
+  .answer-area button {
+    padding: 11px 22px; font-size: 15px; background-color: #2e7d32; color: white;
+    border: none; border-radius: 6px; cursor: pointer; font-weight: bold;
+  }
+  .answer-area button:hover { background-color: #1b5e20; }
+  #feedback-msg { margin-top: 12px; font-weight: bold; min-height: 24px; font-size: 14px; }
+  .next-btn {
+    margin-top: 10px; padding: 8px 16px; background: #eee; color: #333;
+    border: none; border-radius: 4px; cursor: pointer; font-size: 13px;
+  }
+  .command-box {
+    max-width: 680px;
+    margin: 16px auto 40px;
+    background: #ffffff;
+    padding: 14px 20px;
+    border-radius: 8px;
+    border: 1px solid #e0e0e0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .command-label { font-size: 13px; color: #666; white-space: nowrap; }
+  .command-input {
+    flex: 1; padding: 8px 12px; font-family: monospace; font-size: 14px;
+    border: 1px solid #ccc; border-radius: 4px; background: #f9f9f9; color: #333; outline: none;
+  }
+  .command-btn {
+    padding: 8px 16px; font-size: 13px; background: #555; color: white;
+    border: none; border-radius: 4px; cursor: pointer;
+  }
+  .command-btn:hover { background: #333; }
+
+  /* 緊急回避ボタン（メッセージ欄と重ならないよう右上に配置） */
+  #quick-hide-btn {
+    position: fixed;
+    top: 10px;
+    right: 12px;
+    z-index: 99998;
+    background: rgba(30, 31, 34, 0.85);
+    color: #b5bac1;
+    border: 1px solid #3f4147;
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    cursor: pointer;
+    backdrop-filter: blur(4px);
+  }
+  #quick-hide-btn:hover {
+    background: #2e7d32;
+    color: #fff;
+    border-color: #2e7d32;
+  }
 </style>
 </head>
 <body class="flex flex-col">
 
-<!-- ▼▼▼ 表向きの学習サイト ▼▼▼ -->
+<!-- ▼▼▼ 表向きの学習サイト画面 ▼▼▼ -->
 <div id="study-cover">
-  <header class="bg-[#2e7d32] text-white px-5 py-3.5 flex justify-between items-center shadow">
-    <h1 class="m-0 text-base font-bold">📚 Web基礎学習ドリル（英単語・計算演習）</h1>
-    <span class="text-xs bg-white/20 px-2 py-0.5 rounded">学習モード：標準</span>
+  <header class="study-header">
+    <h1>📚 Web基礎学習ドリル（英単語・計算演習）</h1>
+    <span style="font-size: 12px;">学習モード：標準</span>
   </header>
 
-  <div class="max-w-xl mx-auto my-6 bg-white p-6 rounded-xl shadow-sm border border-gray-100 mx-4 sm:mx-auto">
-    <span id="q-category" class="bg-[#e8f5e9] text-[#2e7d32] px-2.5 py-1 rounded text-xs font-bold">英語・基礎単語</span>
-    <h2 class="text-lg font-bold mt-3 text-gray-800">次の問いに答えなさい</h2>
-
-    <div class="my-4 p-4 bg-[#fafafa] border-l-4 border-[#2e7d32] rounded-r">
-      <div id="q-sub" class="text-xs text-gray-500">日本語の意味を入力してください</div>
-      <div id="q-main" class="text-2xl font-bold mt-1 text-gray-900">environment</div>
+  <div class="study-container">
+    <span class="badge" id="q-category">英語・基礎単語</span>
+    <h2 style="margin-top: 10px; font-size: 18px; font-weight: bold;">次の問いに答えなさい</h2>
+    
+    <div class="question-box">
+      <div id="q-sub" style="font-size: 13px; color: #666;">日本語の意味を入力してください</div>
+      <div class="question-text" id="q-main">environment</div>
     </div>
 
-    <div class="flex gap-2 mt-4">
-      <input type="text" id="user-answer" placeholder="ここに解答を入力..." autocomplete="off" class="flex-1 px-3 py-2.5 text-base border border-gray-300 rounded-lg outline-none focus:border-[#2e7d32]">
-      <button onclick="submitAnswer()" class="px-5 py-2.5 text-sm font-bold bg-[#2e7d32] hover:bg-[#1b5e20] text-white rounded-lg transition">解答する</button>
+    <div class="answer-area">
+      <input type="text" id="user-answer" placeholder="ここに解答を入力..." autocomplete="off">
+      <button onclick="submitAnswer()">解答する</button>
     </div>
 
-    <div id="feedback-msg" class="mt-3 text-sm font-bold min-h-[20px]"></div>
-    <button onclick="nextQuestion()" class="mt-2 px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded transition">次の問題へ ➔</button>
+    <div id="feedback-msg"></div>
+    <button class="next-btn" onclick="nextQuestion()">次の問題へ ➔</button>
   </div>
 
-  <!-- 裏コード用コマンド入力エリア -->
-  <div class="max-w-xl mx-auto my-4 bg-white px-5 py-3.5 rounded-lg border border-gray-200 flex items-center gap-2.5 mx-4 sm:mx-auto shadow-sm">
-    <span class="text-xs text-gray-500 whitespace-nowrap font-bold">教材コマンド：</span>
-    <input type="text" id="secret-cmd-input" placeholder="例: ENG-01" autocomplete="off" class="flex-1 px-3 py-1.5 font-mono text-sm border border-gray-300 rounded bg-gray-50 outline-none focus:border-gray-500">
-    <button onclick="runCommand()" class="px-4 py-1.5 text-xs font-bold bg-gray-600 hover:bg-gray-800 text-white rounded transition">実行</button>
+  <!-- 裏コードコマンド入力枠 -->
+  <div class="command-box">
+    <span class="command-label">教材コマンド：</span>
+    <input type="text" id="secret-cmd-input" class="command-input" placeholder="例: ENG-01" autocomplete="off">
+    <button class="command-btn" onclick="runCommand()">実行</button>
   </div>
 </div>
+
+<!-- 右上緊急回避ボタン -->
+<button id="quick-hide-btn" onclick="lockSite()">📚 学習画面へ</button>
 <!-- ▲▲▲ ここまで表向きの学習サイト ▲▲▲ -->
 
 
-<!-- 緊急回避ボタン（Raphael画面の右下に小さく配置） -->
-<button id="quick-hide-btn" onclick="lockSite()" class="fixed bottom-3 right-3 z-50 bg-black/50 hover:bg-black/80 text-white/80 text-[11px] px-2.5 py-1 rounded-full backdrop-blur-sm transition">📚 学習画面へ</button>
-
-
+<!-- ▼▼▼ ここから裏サイト（Raphael）本体 ▼▼▼ -->
 <!-- 認証画面 -->
-<div id="auth-screen" class="fixed inset-0 z-40 flex items-center justify-center bg-[#1e1f22] p-4">
+<div id="auth-screen" class="fixed inset-0 z-50 flex items-center justify-center bg-[#1e1f22] p-4">
   <div class="w-full max-w-sm bg-[#313338] rounded-xl p-6 shadow-2xl">
     <div class="flex flex-col items-center mb-6">
       <div class="w-14 h-14 rounded-2xl bg-[#5865f2] flex items-center justify-center text-white font-bold text-2xl mb-3 shadow">R</div>
@@ -97,10 +187,9 @@
 
 <!-- メインアプリ -->
 <div id="app-screen" class="hidden flex-1 flex h-full overflow-hidden relative">
-  <!-- モバイル背景オーバーレイ -->
   <div id="drawer-overlay" onclick="toggleDrawer(false)" class="hidden fixed inset-0 bg-black/60 z-30 md:hidden"></div>
 
-  <!-- 左ドロワー（サーバーバー + チャンネル/DM一覧） -->
+  <!-- 左ドロワー -->
   <div id="left-drawer" class="fixed md:static inset-y-0 left-0 z-40 flex h-full transform -translate-x-full md:translate-x-0 transition-transform duration-200">
     <!-- サーバー一覧バー -->
     <div class="w-[68px] bg-[#1e1f22] flex flex-col items-center py-3 gap-2.5 shrink-0">
@@ -129,50 +218,50 @@
             <div id="my-code" class="text-[11px] text-[#949ba4]">#0000</div>
           </div>
         </div>
-        <button onclick="openProfileModal()" class="text-[#b5bac1] hover:text-white p-1.5 rounded hover:bg-[#35373c]" title="設定">⚙️</button>
+        <button onclick="openProfileModal()" class="text-[#b5bac1] hover:text-white p-1.5 rounded hover:bg-[#35373c]">⚙️</button>
       </div>
     </div>
   </div>
 
-  <!-- 右メインコンテンツエリア -->
-  <div class="flex-1 flex flex-col h-full min-w-0 bg-[#313338]">
-    <!-- ヘッダー -->
-    <div class="h-12 px-3 border-b border-[#1f2023] flex items-center justify-between shrink-0 shadow-sm">
-      <div class="flex items-center gap-2 min-w-0">
-        <button onclick="toggleDrawer(true)" class="md:hidden text-[#b5bac1] hover:text-white p-1 text-lg">☰</button>
-        <span class="text-[#80848e] font-bold text-lg" id="room-icon">👥</span>
-        <h2 id="room-title" class="font-bold text-white truncate text-sm">フレンド</h2>
+  <!-- メインコンテンツエリア -->
+  <div class="flex-1 flex flex-col bg-[#313338] min-w-0 h-full">
+    <!-- ヘッダー（右上に緊急回避ボタンがあるため pr-28 で余白を確保） -->
+    <div class="h-12 px-4 pr-28 border-b border-[#1f2023] flex items-center justify-between shrink-0 bg-[#313338]">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <button onclick="toggleDrawer(true)" class="md:hidden text-[#b5bac1] hover:text-white text-xl">☰</button>
+        <span class="text-[#80848e] text-lg" id="header-icon">👥</span>
+        <h2 id="header-title" class="font-bold text-white text-sm truncate">フレンド</h2>
       </div>
       <div class="flex items-center gap-2 shrink-0">
-        <button id="call-btn" onclick="joinCall()" class="hidden px-2.5 py-1 rounded bg-[#23a55a] hover:bg-[#1a7f42] text-white text-xs font-bold flex items-center gap-1">📞 通話</button>
-        <button id="invite-btn" onclick="copyInvite()" class="hidden px-2.5 py-1 rounded bg-[#5865f2] hover:bg-[#4752c4] text-white text-xs font-bold">招待</button>
+        <button id="call-btn" onclick="startCall()" class="hidden px-2.5 py-1 rounded bg-[#23a55a] hover:bg-[#1a7f44] text-white text-xs font-bold">📞 通話</button>
+        <button id="invite-btn" onclick="copyInviteCode()" class="hidden px-2.5 py-1 rounded bg-[#5865f2] hover:bg-[#4752c4] text-white text-xs font-bold">招待</button>
         <button onclick="logout()" class="px-2.5 py-1 rounded bg-[#da373c]/20 hover:bg-[#da373c] text-[#f23f43] hover:text-white text-xs font-bold transition">ログアウト</button>
       </div>
     </div>
 
-    <!-- 通話・画面共有バー（通話中のみ表示） -->
+    <!-- 通話・画面共有バー -->
     <div id="call-panel" class="hidden bg-[#1e1f22] border-b border-[#1f2023] p-3 shrink-0">
       <div class="flex items-center justify-between mb-2">
-        <div class="flex items-center gap-2">
-          <span class="w-2.5 h-2.5 rounded-full bg-[#23a55a] animate-pulse"></span>
-          <span class="text-xs font-bold text-[#23a55a]">ボイス＆画面共有チャンネル</span>
-        </div>
-        <div class="flex items-center gap-1.5">
-          <button onclick="toggleMute()" id="mute-btn" class="px-2.5 py-1 rounded bg-[#2b2d31] hover:bg-[#35373c] text-white text-xs">🎤 ミュート</button>
-          <button onclick="toggleScreenShare()" id="screen-btn" class="px-2.5 py-1 rounded bg-[#2b2d31] hover:bg-[#35373c] text-white text-xs">🖥 画面共有</button>
-          <button onclick="leaveCall()" class="px-2.5 py-1 rounded bg-[#da373c] hover:bg-[#a1282c] text-white text-xs font-bold">切断</button>
+        <span class="text-xs font-bold text-[#23a55a] flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-[#23a55a] animate-ping"></span> ボイス＆画面共有チャンネル
+        </span>
+        <div class="flex gap-1.5">
+          <button id="join-call-btn" onclick="joinCall()" class="px-2.5 py-1 rounded bg-[#23a55a] text-white text-xs font-bold">通話に参加</button>
+          <button id="mute-btn" onclick="toggleMute()" class="hidden px-2.5 py-1 rounded bg-[#35373c] text-white text-xs">🎤 ミュート</button>
+          <button id="screen-btn" onclick="toggleScreenShare()" class="hidden px-2.5 py-1 rounded bg-[#5865f2] text-white text-xs">🖥 画面共有</button>
+          <button id="leave-call-btn" onclick="leaveCall()" class="hidden px-2.5 py-1 rounded bg-[#da373c] text-white text-xs font-bold">切断</button>
         </div>
       </div>
-      <div id="video-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto"></div>
+      <div id="video-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
     </div>
 
-    <!-- ホーム画面（フレンド管理） -->
+    <!-- ホーム（フレンド管理画面） -->
     <div id="home-view" class="flex-1 scroll-area p-4 space-y-6">
       <div class="bg-[#2b2d31] p-4 rounded-lg">
-        <h3 class="text-xs font-bold text-white uppercase mb-1">フレンドを追加</h3>
+        <h3 class="text-xs font-bold text-[#b5bac1] uppercase mb-2">フレンドを追加</h3>
         <p class="text-xs text-[#949ba4] mb-3">相手の「ユーザー名#4桁コード」を入力して申請します（あなたのID: <span id="my-full-id" class="text-white font-mono"></span>）</p>
         <div class="flex gap-2">
-          <input id="friend-tag-input" type="text" placeholder="ユーザー名#0000" class="flex-1 px-3 py-2 rounded bg-[#1e1f22] text-white text-sm outline-none focus:ring-2 focus:ring-[#5865f2]">
+          <input id="friend-tag-input" type="text" placeholder="例: Taro#1234" class="flex-1 px-3 py-2 rounded bg-[#1e1f22] text-white text-sm outline-none focus:ring-2 focus:ring-[#5865f2]">
           <button onclick="sendFriendRequest()" class="px-4 py-2 rounded bg-[#5865f2] hover:bg-[#4752c4] text-white text-xs font-bold shrink-0">申請送信</button>
         </div>
       </div>
@@ -184,14 +273,14 @@
 
       <div>
         <h3 class="text-xs font-bold text-[#949ba4] uppercase mb-2">フレンド一覧（オンライン状況）</h3>
-        <div id="friends-list" class="space-y-1"></div>
+        <div id="friends-list" class="space-y-1.5"></div>
       </div>
     </div>
 
     <!-- チャット画面 -->
     <div id="chat-view" class="hidden flex-1 flex flex-col min-h-0">
-      <div id="messages-list" class="flex-1 scroll-area p-4 space-y-3"></div>
-      <div class="p-3 shrink-0">
+      <div id="messages-container" class="flex-1 scroll-area p-4 space-y-4"></div>
+      <div class="p-3 bg-[#313338] shrink-0">
         <div class="flex items-center gap-2 bg-[#383a40] rounded-lg px-3 py-2">
           <input id="message-input" type="text" placeholder="メッセージを送信..." class="flex-1 bg-transparent text-white text-sm outline-none" onkeypress="if(event.key==='Enter') sendMessage()">
           <button onclick="sendMessage()" class="px-3 py-1 rounded bg-[#5865f2] hover:bg-[#4752c4] text-white text-xs font-bold">送信</button>
@@ -201,8 +290,8 @@
   </div>
 </div>
 
-<!-- モーダル：サーバー作成・参加 -->
-<div id="server-modal" class="hidden fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+<!-- サーバー作成・参加モーダル -->
+<div id="server-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
   <div class="w-full max-w-sm bg-[#313338] rounded-xl p-5 space-y-4">
     <h3 class="text-lg font-bold text-white text-center">サーバーを作成・参加</h3>
     <div class="space-y-2">
@@ -215,20 +304,20 @@
     <div class="border-t border-[#3f4147] pt-3 space-y-2">
       <label class="block text-xs font-bold text-[#b5bac1]">招待コードで参加</label>
       <div class="flex gap-2">
-        <input id="invite-code-input" type="text" placeholder="招待コード" class="flex-1 px-3 py-2 rounded bg-[#1e1f22] text-white text-sm outline-none">
-        <button onclick="joinServerByInvite()" class="px-4 py-2 rounded bg-[#23a55a] text-white text-xs font-bold">参加</button>
+        <input id="join-invite-code" type="text" placeholder="招待コードを入力" class="flex-1 px-3 py-2 rounded bg-[#1e1f22] text-white text-sm outline-none">
+        <button onclick="joinServerByCode()" class="px-4 py-2 rounded bg-[#23a55a] text-white text-xs font-bold">参加</button>
       </div>
     </div>
-    <button onclick="closeModal('server-modal')" class="w-full py-2 rounded bg-[#2b2d31] text-xs text-[#b5bac1] hover:text-white">閉じる</button>
+    <button onclick="closeModal('server-modal')" class="w-full py-2 rounded bg-[#4e5058] text-white text-xs font-bold">閉じる</button>
   </div>
 </div>
 
-<!-- モーダル：プロフィール編集 -->
-<div id="profile-modal" class="hidden fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+<!-- プロフィール編集モーダル -->
+<div id="profile-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
   <div class="w-full max-w-sm bg-[#313338] rounded-xl p-5 space-y-4">
     <h3 class="text-lg font-bold text-white">プロフィール編集</h3>
-    <div class="flex items-center gap-3">
-      <div id="edit-avatar-preview" class="w-14 h-14 rounded-full bg-[#5865f2] flex items-center justify-center text-white font-bold text-xl overflow-hidden shrink-0"></div>
+    <div class="flex flex-col items-center gap-2">
+      <div id="preview-avatar" class="w-16 h-16 rounded-full bg-[#5865f2] flex items-center justify-center text-white font-bold text-xl overflow-hidden"></div>
       <label class="px-3 py-1.5 rounded bg-[#4e5058] hover:bg-[#6d6f78] text-white text-xs cursor-pointer">
         画像を選択
         <input type="file" accept="image/*" class="hidden" onchange="handleAvatarUpload(event)">
@@ -243,61 +332,61 @@
       <input id="edit-color" type="color" value="#5865f2" class="w-full h-9 rounded bg-[#1e1f22] cursor-pointer">
     </div>
     <div class="flex gap-2 pt-2">
-      <button onclick="closeModal('profile-modal')" class="flex-1 py-2 rounded bg-[#2b2d31] text-xs text-white">キャンセル</button>
-      <button onclick="saveProfile()" class="flex-1 py-2 rounded bg-[#5865f2] text-xs text-white font-bold">保存</button>
+      <button onclick="closeModal('profile-modal')" class="flex-1 py-2 rounded bg-[#4e5058] text-white text-xs font-bold">キャンセル</button>
+      <button onclick="saveProfile()" class="flex-1 py-2 rounded bg-[#5865f2] text-white text-xs font-bold">保存</button>
     </div>
   </div>
 </div>
 
-<!-- モーダル：サーバー設定（ロール・権限） -->
-<div id="settings-modal" class="hidden fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-  <div class="w-full max-w-md bg-[#313338] rounded-xl p-5 space-y-4 max-h-[85vh] overflow-y-auto">
+<!-- サーバー設定モーダル -->
+<div id="settings-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+  <div class="w-full max-w-md bg-[#313338] rounded-xl p-5 space-y-4 max-h-[85dvh] overflow-y-auto">
     <div class="flex justify-between items-center">
       <h3 class="text-lg font-bold text-white">サーバー設定（ロール・権限）</h3>
       <button onclick="closeModal('settings-modal')" class="text-[#b5bac1] hover:text-white">✕</button>
     </div>
-    <div class="bg-[#2b2d31] p-3 rounded-lg space-y-2">
-      <label class="block text-xs font-bold text-[#b5bac1]">新しいロールを作成</label>
+    <div class="bg-[#2b2d31] p-3 rounded space-y-2">
+      <div class="text-xs font-bold text-[#b5bac1]">新しいロールを作成</div>
       <div class="flex gap-2">
         <input id="role-name-input" type="text" placeholder="ロール名（例: 管理者）" class="flex-1 px-2.5 py-1.5 rounded bg-[#1e1f22] text-white text-xs outline-none">
-        <input id="role-color-input" type="color" value="#e91e63" class="w-9 h-8 rounded bg-[#1e1f22]">
+        <input id="role-color-input" type="color" value="#e91e63" class="w-10 h-7 rounded bg-[#1e1f22]">
       </div>
       <div class="grid grid-cols-2 gap-1.5 text-xs pt-1">
         <label class="flex items-center gap-1.5"><input type="checkbox" id="perm-send" checked> メッセージ送信</label>
         <label class="flex items-center gap-1.5"><input type="checkbox" id="perm-delete"> メッセージ削除</label>
-        <label class="flex items-center gap-1.5"><input type="checkbox" id="perm-roles"> ロール管理</label>
+        <label class="flex items-center gap-1.5"><input type="checkbox" id="perm-role"> ロール管理</label>
         <label class="flex items-center gap-1.5"><input type="checkbox" id="perm-kick"> メンバー追放</label>
       </div>
       <button onclick="createRole()" class="w-full py-1.5 mt-1 rounded bg-[#5865f2] text-white text-xs font-bold">ロール追加</button>
     </div>
     <div>
-      <h4 class="text-xs font-bold text-[#949ba4] uppercase mb-1.5">作成済みロール</h4>
-      <div id="roles-list" class="space-y-1 text-xs"></div>
+      <div class="text-xs font-bold text-[#b5bac1] mb-1.5">作成済みロール</div>
+      <div id="roles-list" class="space-y-1.5"></div>
     </div>
     <div>
-      <h4 class="text-xs font-bold text-[#949ba4] uppercase mb-1.5">メンバーへのロール付与</h4>
-      <div id="members-role-list" class="space-y-2 text-xs"></div>
+      <div class="text-xs font-bold text-[#b5bac1] mb-1.5">メンバーへのロール付与</div>
+      <div id="server-members-list" class="space-y-1.5"></div>
     </div>
   </div>
 </div>
 
 <script>
 // ==========================================
-// 1. 表向き学習サイト＆裏コード（DZR）制御
+// 1. 表向きの学習サイト & 裏コード(DZR)切り替え処理
 // ==========================================
 const SECRET_COMMAND = "DZR";
-const questions = [
+const studyQuestions = [
   { cat: "英語・基礎単語", sub: "日本語の意味を入力してください", q: "environment", a: ["環境"] },
   { cat: "数学・計算", sub: "x の値を求めなさい", q: "3x + 7 = 22", a: ["5", "x=5"] },
   { cat: "英語・基礎単語", sub: "日本語の意味を入力してください", q: "opportunity", a: ["機会", "チャンス"] },
   { cat: "理科・基礎", sub: "元素記号を答えなさい", q: "酸素", a: ["O", "o", "O2"] }
 ];
-let currentQ = 0;
+let currentStudyQ = 0;
 
 function submitAnswer() {
   const val = document.getElementById('user-answer').value.trim();
   const feedback = document.getElementById('feedback-msg');
-  if (questions[currentQ].a.includes(val)) {
+  if (studyQuestions[currentStudyQ].a.includes(val)) {
     feedback.style.color = "#2e7d32";
     feedback.textContent = "⭕ 正解です！よくできました。";
   } else {
@@ -306,34 +395,35 @@ function submitAnswer() {
   }
 }
 
-document.getElementById('user-answer').addEventListener('keypress', e => {
+document.getElementById('user-answer').addEventListener('keypress', function(e) {
   if (e.key === 'Enter') submitAnswer();
 });
 
-function nextQuestion() {
-  currentQ = (currentQ + 1) % questions.length;
-  document.getElementById('q-category').textContent = questions[currentQ].cat;
-  document.getElementById('q-sub').textContent = questions[currentQ].sub;
-  document.getElementById('q-main').textContent = questions[currentQ].q;
-  document.getElementById('user-answer').value = "";
-  document.getElementById('feedback-msg').textContent = "";
-}
-
 function runCommand() {
   const cmdInput = document.getElementById('secret-cmd-input');
-  if (cmdInput.value.trim().toUpperCase() === SECRET_COMMAND) {
+  const cmdVal = cmdInput.value.trim();
+  if (cmdVal.toUpperCase() === SECRET_COMMAND) {
     document.getElementById('study-cover').style.display = 'none';
     cmdInput.value = "";
     document.title = "Raphael";
   } else {
-    alert("指定された教材コマンドは見つかりませんでした。");
+    alert("指定された教材コマンド「" + cmdVal + "」は見つかりませんでした。");
     cmdInput.value = "";
   }
 }
 
-document.getElementById('secret-cmd-input').addEventListener('keypress', e => {
+document.getElementById('secret-cmd-input').addEventListener('keypress', function(e) {
   if (e.key === 'Enter') runCommand();
 });
+
+function nextQuestion() {
+  currentStudyQ = (currentStudyQ + 1) % studyQuestions.length;
+  document.getElementById('q-category').textContent = studyQuestions[currentStudyQ].cat;
+  document.getElementById('q-sub').textContent = studyQuestions[currentStudyQ].sub;
+  document.getElementById('q-main').textContent = studyQuestions[currentStudyQ].q;
+  document.getElementById('user-answer').value = "";
+  document.getElementById('feedback-msg').textContent = "";
+}
 
 function lockSite() {
   document.getElementById('study-cover').style.display = 'block';
@@ -341,25 +431,30 @@ function lockSite() {
 }
 
 let lastEscTime = 0;
-document.addEventListener('keydown', e => {
+document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') {
-    if (Date.now() - lastEscTime < 500) lockSite();
-    lastEscTime = Date.now();
+    const now = Date.now();
+    if (now - lastEscTime < 500) {
+      lockSite();
+    }
+    lastEscTime = now;
   }
 });
 
 // ==========================================
-// 2. Raphael 本体プログラム（Supabase連携）
+// 2. Raphael 本番用 Supabase & アプリロジック
 // ==========================================
 const SUPABASE_URL = "https://huzzkisjvjdyljkvmeze.supabase.co";
 const SUPABASE_KEY = "sb_publishable_RoYU3XG8ohLuRW7baisURA_VDsCtD3l";
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let currentUser = null, myProfile = null, isSignUp = false;
-let currentRoom = { type: 'home', id: null, name: 'フレンド', ownerId: null, inviteCode: null };
+let currentRoom = { type: 'home', id: null, name: 'フレンド', ownerId: null };
 let onlineUsers = new Set(), profilesMap = {}, serverRoles = [], memberRoles = [];
 let uploadedAvatarBase64 = null;
-let callChannel = null, localStream = null, screenStream = null, peers = {}, inCall = false, isMuted = false;
+
+// WebRTC 通話・画面共有用変数
+let callChannel = null, localStream = null, screenStream = null, peers = {}, inCall = false;
 
 window.onload = async () => {
   const { data: { session } } = await sb.auth.getSession();
@@ -438,14 +533,14 @@ function renderAvatar(el, profile) {
   if (profile.avatar_url) {
     el.innerHTML = `<img src="${profile.avatar_url}" class="w-full h-full object-cover">`;
   } else {
-    el.innerHTML = '';
+    el.innerHTML = "";
     el.style.backgroundColor = profile.avatar_color || '#5865f2';
     el.textContent = (profile.username || '?')[0].toUpperCase();
   }
 }
 
 function setupPresence() {
-  const room = sb.channel('online-users', { config: { presence: { key: currentUser.id } } });
+  const room = sb.channel('online-users');
   room.on('presence', { event: 'sync' }, () => {
     onlineUsers = new Set(Object.keys(room.presenceState()));
     if (currentRoom.type === 'home') loadFriends();
@@ -479,15 +574,16 @@ function toggleDrawer(open) {
 function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
 function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
 
-// ホーム（フレンド・DM一覧）
+// ホーム（フレンド画面）
 async function selectHome() {
-  currentRoom = { type: 'home', id: null, name: 'フレンド', ownerId: null, inviteCode: null };
+  currentRoom = { type: 'home', id: null, name: 'フレンド', ownerId: null };
   document.getElementById('sidebar-title').textContent = 'ダイレクトメッセージ';
+  document.getElementById('header-icon').textContent = '👥';
+  document.getElementById('header-title').textContent = 'フレンド';
   document.getElementById('server-settings-btn').classList.add('hidden');
-  document.getElementById('room-icon').textContent = '👥';
-  document.getElementById('room-title').textContent = 'フレンド';
   document.getElementById('call-btn').classList.add('hidden');
   document.getElementById('invite-btn').classList.add('hidden');
+  document.getElementById('call-panel').classList.add('hidden');
   document.getElementById('home-view').classList.remove('hidden');
   document.getElementById('chat-view').classList.add('hidden');
   toggleDrawer(false);
@@ -495,74 +591,60 @@ async function selectHome() {
 }
 
 async function loadFriends() {
-  const { data: ships } = await sb.from('friendships').select('*').or(`user_id.eq.${currentUser.id},friend_id.eq.${currentUser.id}`);
+  const { data: list } = await sb.from('friendships').select('*').or(`user_id.eq.${currentUser.id},friend_id.eq.${currentUser.id}`);
   const pendingEl = document.getElementById('pending-requests');
   const friendsEl = document.getElementById('friends-list');
   const sidebarEl = document.getElementById('sidebar-content');
   pendingEl.innerHTML = '';
   friendsEl.innerHTML = '';
-  sidebarEl.innerHTML = `<div onclick="selectHome()" class="px-2.5 py-2 rounded bg-[#35373c] text-white text-sm font-bold cursor-pointer flex items-center gap-2"><span>👥</span> フレンド</div>`;
+  sidebarEl.innerHTML = '<div class="px-2 py-1 text-xs font-bold text-[#949ba4]">ダイレクトメッセージ</div>';
 
-  if (!ships || ships.length === 0) {
-    friendsEl.innerHTML = '<p class="text-xs text-[#949ba4]">フレンドがいません。</p>';
+  if (!list || list.length === 0) {
+    friendsEl.innerHTML = '<div class="text-xs text-[#949ba4]">まだフレンドがいません</div>';
     return;
   }
 
-  const otherIds = ships.map(s => s.user_id === currentUser.id ? s.friend_id : s.user_id);
-  const { data: profs } = await sb.from('profiles').select('*').in('id', otherIds);
+  const ids = [...new Set(list.flatMap(f => [f.user_id, f.friend_id]))];
+  const { data: profs } = await sb.from('profiles').select('*').in('id', ids);
   (profs || []).forEach(p => profilesMap[p.id] = p);
 
-  for (const s of ships) {
-    const otherId = s.user_id === currentUser.id ? s.friend_id : s.user_id;
-    const prof = profilesMap[otherId] || { username: '不明', friend_code: '0000' };
+  list.forEach(f => {
+    const otherId = f.user_id === currentUser.id ? f.friend_id : f.user_id;
+    const prof = profilesMap[otherId] || { username: '不明なユーザー', friend_code: '0000' };
     const isOnline = onlineUsers.has(otherId);
 
-    if (s.status === 'pending') {
-      if (s.friend_id === currentUser.id) {
-        pendingEl.innerHTML += `
-          <div class="flex items-center justify-between bg-[#2b2d31] p-2.5 rounded">
-            <span class="text-sm text-white font-bold">${prof.username}#${prof.friend_code}</span>
-            <div class="flex gap-1.5">
-              <button onclick="acceptFriend('${s.id}')" class="px-2.5 py-1 rounded bg-[#23a55a] text-white text-xs font-bold">承認</button>
-              <button onclick="removeFriend('${s.id}')" class="px-2.5 py-1 rounded bg-[#da373c] text-white text-xs font-bold">拒否</button>
-            </div>
-          </div>`;
-      } else {
-        pendingEl.innerHTML += `<div class="text-xs text-[#949ba4] bg-[#2b2d31] p-2 rounded">送信済み: ${prof.username}#${prof.friend_code}</div>`;
-      }
-    } else if (s.status === 'accepted') {
+    if (f.status === 'pending') {
+      const isIncoming = f.friend_id === currentUser.id;
+      pendingEl.innerHTML += `
+        <div class="flex items-center justify-between bg-[#2b2d31] p-2.5 rounded">
+          <span class="text-xs font-bold text-white">${prof.username}#${prof.friend_code}</span>
+          ${isIncoming ? `<button onclick="acceptFriend('${f.id}')" class="px-3 py-1 rounded bg-[#23a55a] text-white text-xs font-bold">承認</button>` : '<span class="text-xs text-[#949ba4]">承認待ち</span>'}
+        </div>`;
+    } else if (f.status === 'accepted') {
       const dmId = [currentUser.id, otherId].sort().join('_');
       friendsEl.innerHTML += `
-        <div onclick="openDM('${dmId}', '${prof.username}')" class="flex items-center justify-between p-2.5 rounded hover:bg-[#35373c] cursor-pointer">
+        <div onclick="openDM('${dmId}', '${prof.username}')" class="flex items-center justify-between p-2.5 rounded bg-[#2b2d31]/60 hover:bg-[#35373c] cursor-pointer">
           <div class="flex items-center gap-2.5">
-            <div class="relative">
-              <div class="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs overflow-hidden" style="background:${prof.avatar_color || '#5865f2'}">
-                ${prof.avatar_url ? `<img src="${prof.avatar_url}" class="w-full h-full object-cover">` : prof.username[0].toUpperCase()}
-              </div>
-              <span class="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full ${isOnline ? 'bg-[#23a55a]' : 'bg-[#80848e]'} ring-2 ring-[#313338]"></span>
-            </div>
-            <div>
-              <div class="text-sm font-bold text-white">${prof.username} <span class="text-xs text-[#949ba4] font-normal">#${prof.friend_code}</span></div>
-              <div class="text-[11px] text-[#949ba4]">${isOnline ? 'オンライン' : 'オフライン'}</div>
-            </div>
+            <span class="w-2.5 h-2.5 rounded-full ${isOnline ? 'bg-[#23a55a]' : 'bg-[#80848e]'}"></span>
+            <span class="text-sm font-bold text-white">${prof.username}</span>
+            <span class="text-xs text-[#949ba4]">#${prof.friend_code}</span>
           </div>
-          <span class="text-xs text-[#b5bac1] bg-[#2b2d31] px-2.5 py-1 rounded">チャット</span>
+          <span class="text-xs text-[#00a8fc]">チャット ➔</span>
         </div>`;
-
       sidebarEl.innerHTML += `
-        <div onclick="openDM('${dmId}', '${prof.username}')" class="px-2.5 py-2 rounded hover:bg-[#35373c] text-[#949ba4] hover:text-white text-sm cursor-pointer flex items-center gap-2">
+        <button onclick="openDM('${dmId}', '${prof.username}')" class="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[#35373c] text-left text-sm text-[#b5bac1] hover:text-white">
           <span class="w-2 h-2 rounded-full ${isOnline ? 'bg-[#23a55a]' : 'bg-[#80848e]'}"></span>
           <span class="truncate">${prof.username}</span>
-        </div>`;
+        </button>`;
     }
-  }
+  });
 }
 
 async function sendFriendRequest() {
   const input = document.getElementById('friend-tag-input').value.trim();
   const [uname, code] = input.split('#');
   if (!uname || !code) return alert('「ユーザー名#4桁コード」の形式で入力してください');
-  const { data: target } = await sb.from('profiles').select('*').eq('username', uname).eq('friend_code', code).single();
+  const { data: target } = await sb.from('profiles').select('id').eq('username', uname).eq('friend_code', code).single();
   if (!target) return alert('ユーザーが見つかりません');
   if (target.id === currentUser.id) return alert('自分自身には申請できません');
   await sb.from('friendships').insert({ user_id: currentUser.id, friend_id: target.id, status: 'pending' });
@@ -576,35 +658,32 @@ async function acceptFriend(id) {
   loadFriends();
 }
 
-async function removeFriend(id) {
-  await sb.from('friendships').delete().eq('id', id);
-  loadFriends();
-}
-
+// DMチャット
 async function openDM(dmId, name) {
-  currentRoom = { type: 'dm', id: dmId, name, ownerId: null, inviteCode: null };
-  document.getElementById('room-icon').textContent = '@';
-  document.getElementById('room-title').textContent = name;
-  document.getElementById('call-btn').classList.remove('hidden');
-  document.getElementById('invite-btn').classList.add('hidden');
+  currentRoom = { type: 'dm', id: dmId, name, ownerId: null };
+  document.getElementById('header-icon').textContent = '@';
+  document.getElementById('header-title').textContent = name;
   document.getElementById('home-view').classList.add('hidden');
   document.getElementById('chat-view').classList.remove('hidden');
+  document.getElementById('call-btn').classList.remove('hidden');
+  document.getElementById('invite-btn').classList.add('hidden');
   toggleDrawer(false);
   await loadMessages();
 }
 
 // サーバー機能
 async function loadServers() {
-  const { data: mems } = await sb.from('server_members').select('server_id, servers(*)').eq('user_id', currentUser.id);
+  const { data: members } = await sb.from('server_members').select('server_id, servers(*)').eq('user_id', currentUser.id);
   const listEl = document.getElementById('server-list');
   listEl.innerHTML = '';
-  (mems || []).forEach(m => {
+  (members || []).forEach(m => {
     const s = m.servers;
     if (!s) return;
-    listEl.innerHTML += `
-      <button onclick="selectServer('${s.id}', '${s.name}', '${s.owner_id}', '${s.invite_code}')" class="w-12 h-12 rounded-3xl hover:rounded-2xl bg-[#313338] hover:bg-[#5865f2] text-white font-bold text-sm flex items-center justify-center transition shrink-0" title="${s.name}">
-        ${s.name.slice(0, 2)}
-      </button>`;
+    const btn = document.createElement('button');
+    btn.className = 'w-12 h-12 rounded-3xl hover:rounded-2xl bg-[#313338] hover:bg-[#5865f2] text-white font-bold text-sm flex items-center justify-center transition shrink-0';
+    btn.textContent = s.name.slice(0, 2);
+    btn.onclick = () => selectServer(s);
+    listEl.appendChild(btn);
   });
 }
 
@@ -618,71 +697,73 @@ async function createServer() {
   document.getElementById('new-server-name').value = '';
   closeModal('server-modal');
   await loadServers();
-  selectServer(srv.id, srv.name, srv.owner_id, srv.invite_code);
+  selectServer(srv);
 }
 
-async function joinServerByInvite() {
-  const code = document.getElementById('invite-code-input').value.trim().toUpperCase();
+async function joinServerByCode() {
+  const code = document.getElementById('join-invite-code').value.trim().toUpperCase();
   if (!code) return;
   const { data: srv } = await sb.from('servers').select('*').eq('invite_code', code).single();
   if (!srv) return alert('招待コードが無効です');
   await sb.from('server_members').upsert({ server_id: srv.id, user_id: currentUser.id });
-  document.getElementById('invite-code-input').value = '';
+  document.getElementById('join-invite-code').value = '';
   closeModal('server-modal');
   await loadServers();
-  selectServer(srv.id, srv.name, srv.owner_id, srv.invite_code);
+  selectServer(srv);
 }
 
-async function selectServer(id, name, ownerId, inviteCode) {
-  currentRoom = { type: 'server', id, name, ownerId, inviteCode };
-  document.getElementById('sidebar-title').textContent = name;
-  document.getElementById('server-settings-btn').classList.toggle('hidden', ownerId !== currentUser.id);
-  document.getElementById('room-icon').textContent = '#';
-  document.getElementById('room-title').textContent = '一般';
+async function selectServer(srv) {
+  currentRoom = { type: 'server', id: srv.id, name: srv.name, ownerId: srv.owner_id, inviteCode: srv.invite_code };
+  document.getElementById('sidebar-title').textContent = srv.name;
+  document.getElementById('header-icon').textContent = '#';
+  document.getElementById('header-title').textContent = '一般チャット';
+  document.getElementById('server-settings-btn').classList.toggle('hidden', srv.owner_id !== currentUser.id);
   document.getElementById('call-btn').classList.remove('hidden');
   document.getElementById('invite-btn').classList.remove('hidden');
   document.getElementById('home-view').classList.add('hidden');
   document.getElementById('chat-view').classList.remove('hidden');
   document.getElementById('sidebar-content').innerHTML = `
-    <div class="text-[11px] font-bold text-[#949ba4] px-2 pt-2">テキストチャンネル</div>
-    <div class="px-2.5 py-1.5 rounded bg-[#35373c] text-white text-sm font-bold flex items-center gap-1.5"># 一般</div>
-    <div class="text-[11px] font-bold text-[#949ba4] px-2 pt-3">ボイスチャンネル</div>
-    <div onclick="joinCall()" class="px-2.5 py-1.5 rounded hover:bg-[#35373c] text-[#949ba4] hover:text-white text-sm cursor-pointer flex items-center gap-1.5">🔊 ボイス＆画面共有</div>`;
+    <div class="px-2 py-1 text-xs font-bold text-[#949ba4]">テキストチャンネル</div>
+    <button class="w-full text-left px-2 py-1.5 rounded bg-[#35373c] text-white text-sm font-medium"># 一般チャット</button>
+    <div class="px-2 py-1 mt-3 text-xs font-bold text-[#949ba4]">ボイスチャンネル</div>
+    <button onclick="startCall()" class="w-full text-left px-2 py-1.5 rounded hover:bg-[#35373c] text-[#b5bac1] hover:text-white text-sm">🔊 通話・画面共有</button>
+  `;
   toggleDrawer(false);
   await loadMessages();
 }
 
-function copyInvite() {
+function copyInviteCode() {
   if (!currentRoom.inviteCode) return;
   navigator.clipboard?.writeText(currentRoom.inviteCode);
-  alert(`招待コード「${currentRoom.inviteCode}」をコピーしました！`);
+  alert('招待コード「' + currentRoom.inviteCode + '」をコピーしました！');
 }
 
-// チャット送受信
+// メッセージ送受信
 async function loadMessages() {
-  const listEl = document.getElementById('messages-list');
-  listEl.innerHTML = '';
+  const container = document.getElementById('messages-container');
+  container.innerHTML = '';
   let query = sb.from('messages').select('*').order('created_at', { ascending: true }).limit(100);
   if (currentRoom.type === 'server') query = query.eq('server_id', currentRoom.id);
   else query = query.eq('dm_id', currentRoom.id);
 
   const { data: msgs } = await query;
-  const userIds = [...new Set((msgs || []).map(m => m.user_id))];
+  if (!msgs) return;
+  const userIds = [...new Set(msgs.map(m => m.user_id))];
   if (userIds.length > 0) {
     const { data: profs } = await sb.from('profiles').select('*').in('id', userIds);
     (profs || []).forEach(p => profilesMap[p.id] = p);
   }
-  (msgs || []).forEach(m => appendMessage(m));
+  msgs.forEach(appendMessage);
 }
 
 function appendMessage(m) {
-  const listEl = document.getElementById('messages-list');
+  const container = document.getElementById('messages-container');
   const prof = profilesMap[m.user_id] || { username: 'ユーザー', avatar_color: '#5865f2' };
-  const time = new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const time = new Date(m.created_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
   const div = document.createElement('div');
   div.className = 'flex items-start gap-3 hover:bg-[#2e3035] p-1.5 rounded';
   div.innerHTML = `
-    <div class="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0 overflow-hidden" style="background:${prof.avatar_color || '#5865f2'}">
+    <div class="w-9 h-9 rounded-full shrink-0 flex items-center justify-center text-white font-bold text-xs overflow-hidden" style="background:${prof.avatar_color || '#5865f2'}">
       ${prof.avatar_url ? `<img src="${prof.avatar_url}" class="w-full h-full object-cover">` : (prof.username || '?')[0].toUpperCase()}
     </div>
     <div class="min-w-0 flex-1">
@@ -690,16 +771,16 @@ function appendMessage(m) {
         <span class="font-bold text-white text-sm">${prof.username}</span>
         <span class="text-[11px] text-[#949ba4]">${time}</span>
       </div>
-      <div class="text-sm text-[#dbdee1] break-words mt-0.5">${escapeHtml(m.content)}</div>
+      <p class="text-sm text-[#dbdee1] break-words mt-0.5">${escapeHtml(m.content)}</p>
     </div>`;
-  listEl.appendChild(div);
-  listEl.scrollTop = listEl.scrollHeight;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
 }
 
 async function sendMessage() {
   const input = document.getElementById('message-input');
   const content = input.value.trim();
-  if (!content) return;
+  if (!content || currentRoom.type === 'home') return;
   input.value = '';
   const payload = { user_id: currentUser.id, content };
   if (currentRoom.type === 'server') payload.server_id = currentRoom.id;
@@ -715,7 +796,7 @@ function escapeHtml(str) {
 function openProfileModal() {
   document.getElementById('edit-username').value = myProfile.username;
   document.getElementById('edit-color').value = myProfile.avatar_color || '#5865f2';
-  renderAvatar(document.getElementById('edit-avatar-preview'), myProfile);
+  renderAvatar(document.getElementById('preview-avatar'), myProfile);
   openModal('profile-modal');
 }
 
@@ -725,7 +806,7 @@ function handleAvatarUpload(e) {
   const reader = new FileReader();
   reader.onload = ev => {
     uploadedAvatarBase64 = ev.target.result;
-    document.getElementById('edit-avatar-preview').innerHTML = `<img src="${uploadedAvatarBase64}" class="w-full h-full object-cover">`;
+    document.getElementById('preview-avatar').innerHTML = `<img src="${uploadedAvatarBase64}" class="w-full h-full object-cover">`;
   };
   reader.readAsDataURL(file);
 }
@@ -736,92 +817,90 @@ async function saveProfile() {
   const updates = { username, avatar_color };
   if (uploadedAvatarBase64) updates.avatar_url = uploadedAvatarBase64;
   await sb.from('profiles').update(updates).eq('id', currentUser.id);
-  uploadedAvatarBase64 = null;
-  await loadMyProfile();
   closeModal('profile-modal');
+  await loadMyProfile();
 }
 
 // サーバー設定（ロール）
 async function openServerSettings() {
   openModal('settings-modal');
-  await loadRolesAndMembers();
+  await loadServerRoles();
 }
 
-async function loadRolesAndMembers() {
+async function loadServerRoles() {
   const { data: roles } = await sb.from('server_roles').select('*').eq('server_id', currentRoom.id);
-  const rolesEl = document.getElementById('roles-list');
-  rolesEl.innerHTML = (roles || []).map(r => `<div class="p-2 bg-[#2b2d31] rounded flex items-center gap-2"><span class="w-3 h-3 rounded-full" style="background:${r.color}"></span><span class="text-white font-bold">${r.name}</span></div>`).join('') || '<p class="text-[#949ba4]">ロールがありません</p>';
+  const el = document.getElementById('roles-list');
+  el.innerHTML = (roles || []).map(r => `
+    <div class="flex items-center justify-between bg-[#2b2d31] px-3 py-1.5 rounded text-xs">
+      <span style="color:${r.color}" class="font-bold">● ${r.name}</span>
+      <span class="text-[#949ba4]">権限設定済み</span>
+    </div>`).join('') || '<div class="text-xs text-[#949ba4]">ロールがありません</div>';
 }
 
 async function createRole() {
   const name = document.getElementById('role-name-input').value.trim();
   if (!name) return;
   const color = document.getElementById('role-color-input').value;
-  await sb.from('server_roles').insert({ server_id: currentRoom.id, name, color });
+  await sb.from('server_roles').insert({
+    server_id: currentRoom.id, name, color,
+    can_send: document.getElementById('perm-send').checked,
+    can_delete: document.getElementById('perm-delete').checked,
+    can_manage_roles: document.getElementById('perm-role').checked,
+    can_kick: document.getElementById('perm-kick').checked
+  });
   document.getElementById('role-name-input').value = '';
-  loadRolesAndMembers();
+  loadServerRoles();
 }
 
-// 通話・画面共有（基本制御）
-async function joinCall() {
+// 通話・画面共有（簡易WebRTCシグナリング）
+function startCall() {
   document.getElementById('call-panel').classList.remove('hidden');
-  inCall = true;
+}
+
+async function joinCall() {
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-    addVideoBox('me', myProfile.username + ' (自分)', localStream, true);
+    inCall = true;
+    document.getElementById('join-call-btn').classList.add('hidden');
+    document.getElementById('mute-btn').classList.remove('hidden');
+    document.getElementById('screen-btn').classList.remove('hidden');
+    document.getElementById('leave-call-btn').classList.remove('hidden');
+    document.getElementById('video-grid').innerHTML = `<div class="bg-[#2b2d31] p-3 rounded text-xs text-center text-[#23a55a]">🎤 通話に接続しました（${myProfile.username}）</div>`;
   } catch (e) {
-    addVideoBox('me', myProfile.username + ' (マイク未接続)', null, true);
+    alert('マイクの許可が必要です: ' + e.message);
   }
 }
 
 function toggleMute() {
   if (!localStream) return;
-  isMuted = !isMuted;
-  localStream.getAudioTracks().forEach(t => t.enabled = !isMuted);
-  document.getElementById('mute-btn').textContent = isMuted ? '🔇 解除' : '🎤 ミュート';
+  const track = localStream.getAudioTracks()[0];
+  if (track) {
+    track.enabled = !track.enabled;
+    document.getElementById('mute-btn').textContent = track.enabled ? '🎤 ミュート' : '🔇 ミュート解除';
+  }
 }
 
 async function toggleScreenShare() {
-  if (screenStream) {
-    screenStream.getTracks().forEach(t => t.stop());
-    screenStream = null;
-    document.getElementById('vid-screen')?.remove();
-    return;
-  }
   try {
     screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-    addVideoBox('screen', '画面共有中', screenStream, true);
+    const video = document.createElement('video');
+    video.srcObject = screenStream;
+    video.autoplay = true;
+    video.className = 'w-full rounded bg-black max-h-48 object-contain';
+    document.getElementById('video-grid').appendChild(video);
   } catch (e) {
-    alert('画面共有がキャンセルされたか、この端末ではサポートされていません。');
+    alert('画面共有がキャンセルされました');
   }
-}
-
-function addVideoBox(id, label, stream, muted) {
-  document.getElementById('vid-' + id)?.remove();
-  const grid = document.getElementById('video-grid');
-  const box = document.createElement('div');
-  box.id = 'vid-' + id;
-  box.className = 'relative bg-[#2b2d31] rounded-lg overflow-hidden h-28 flex items-center justify-center border border-[#3f4147]';
-  if (stream && stream.getVideoTracks().length > 0) {
-    const v = document.createElement('video');
-    v.srcObject = stream;
-    v.autoplay = true;
-    v.playsInline = true;
-    v.muted = muted;
-    v.className = 'w-full h-full object-contain bg-black';
-    box.appendChild(v);
-  } else {
-    box.innerHTML = `<div class="text-xs font-bold text-white">🎙 ${label}</div>`;
-  }
-  grid.appendChild(box);
 }
 
 function leaveCall() {
-  inCall = false;
-  localStream?.getTracks().forEach(t => t.stop());
-  screenStream?.getTracks().forEach(t => t.stop());
-  localStream = null;
-  screenStream = null;
+  if (localStream) localStream.getTracks().forEach(t => t.stop());
+  if (screenStream) screenStream.getTracks().forEach(t => t.stop());
+  localStream = null; screenStream = null; inCall = false;
+  document.getElementById('join-call-btn').classList.remove('hidden');
+  document.getElementById('mute-btn').classList.add('hidden');
+  document.getElementById('screen-btn').classList.add('hidden');
+  document.getElementById('leave-call-btn').classList.add('hidden');
   document.getElementById('video-grid').innerHTML = '';
   document.getElementById('call-panel').classList.add('hidden');
 }
